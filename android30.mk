@@ -27,7 +27,7 @@ OBJS = $(subst .c,.o,$(addprefix src/,$(SRCSC))) $(subst .cpp,.o,$(addprefix src
 all: directories bin/$(TARGET)
 
 directories:
-	mkdir -p obj
+	mkdir -p obj bin
 
 bin/$(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $(subst src,obj,$(OBJS)) $(LIBS)
