@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+node_modules/
+.vscode/
+bin/
+include/deps/
+licenses/
+monitor/dist/
+frontend/out/

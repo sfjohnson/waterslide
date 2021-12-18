@@ -1,0 +1,59 @@
+syntax = "proto3";
+option optimize_for = LITE_RUNTIME;
+
+message InitConfig {
+  enum Mode {
+    SENDER = 0;
+    RECEIVER = 1;
+  }
+
+  message Endpoint {
+    bytes addr = 1;
+    int32 port = 2;
+  }
+
+  message Mux {
+    int32 maxChannels = 1;
+    int32 maxPacketSize = 2;
+  }
+
+  message Audio {
+    int32 channelCount = 1; // DEBUG: Because of the way the ring buffers are (mis)used, this can't be >2 on 32-bit architectures, or >4 on 64-bit architectures
+    int32 ioSampleRate = 2;
+    string deviceName = 3;
+    // higher means quicker
+    // Main meter
+    float levelSlowAttack = 4;
+    float levelSlowRelease = 5;
+    // Peak meter
+    float levelFastAttack = 6;
+    float levelFastRelease = 7;
+  }
+
+  message Opus {
+    int32 bitrate = 1;
+    int32 frameSize = 2; // 240 samples = 5 ms @ 48 kHz // https://www.audiokinetic.com/library/edge/?source=Help&id=opus_soft_parameters
+    int32 maxPacketSize = 3; // Packets with 120 frames at 256 kbps are around 80 to 130 bytes. This value also affects the minimum data rate.
+    int32 sampleRate = 4;
+    int32 encodeRingLength = 5; // Must be a power of two, and larger than OPUS_FRAME_SIZE
+    int32 decodeRingLength = 6; // Must be a power of two, and larger than OPUS_FRAME_SIZE
+  }
+
+  message Fec {
+    int32 symbolLen = 1; // In bytes
+    int32 sourceSymbolsPerBlock = 2;
+    int32 repairSymbolsPerBlock = 3;
+  }
+
+  message Monitor {
+    int32 wsPort = 1;
+  }
+
+  Mode mode = 1;
+  repeated Endpoint endpoints = 2;
+  Mux mux = 3;
+  Audio audio = 4;
+  Opus opus = 5;
+  Fec fec = 6;
+  Monitor monitor = 7;
+}
