@@ -1,5 +1,27 @@
 # waterslide
+
 Realtime data transport with link aggregation
+
+## Notes
+
+This project is in the proof-of-concept stage and doesn't work very well yet. List of implemented and to-do features:
+
+- [x] High bitrate Opus compressed audio transport
+- [x] Forward error correction (no waiting for packet re-transmissions)
+- [x] Works over the internet and on a LAN
+- [ ] Link aggregation
+- [ ] Lossless audio
+- [ ] Support for over 4 audio channels
+- [ ] Resampling to correct for clock drift between sender and receiver
+- [ ] Encryption
+- [ ] Network discovery
+
+Platforms:
+
+- [x] macOS x64
+- [x] Android
+- [ ] macOS ARM
+- [ ] Raspberry Pi
 
 ## Setup (common)
 
@@ -41,3 +63,9 @@ make -f macos10.mk
 make -f macos10.mk clean
 make -f android30.mk
 ```
+
+## Licensing
+
+Licenses for dependencies are in the `licenses` folder (after running `./pull-deps.sh`). Contributions to dependencies are made under each dependency's specific license. All other code is licensed under MPL-2.0. Contributions to this repository are made under MPL-2.0.
+
+This software uses an implementation of RaptorQ (RFC 6330). Use of this software must adhere to Qualcomm's conditions, see here: https://datatracker.ietf.org/ipr/2554/
