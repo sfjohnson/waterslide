@@ -15,9 +15,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup dependencies
-        run: |
-          brew install openssl@3
-          ./pull-deps.sh
+        run: ./pull-deps.sh
 
       - name: Make
         run: make -f macos10.mk

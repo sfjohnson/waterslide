@@ -12,7 +12,12 @@ SRCSC = main.c sender.c receiver.c globals.c stats.c utils.c circ.c slip.c mux.c
 SRCSCPP = syncer.cpp init-config.pb.cpp config.cpp
 OBJS = $(subst .c,.o,$(addprefix src/,$(SRCSC))) $(subst .cpp,.o,$(addprefix src/,$(SRCSCPP)))
 
-all: bin/$(TARGET)
+.PHONY: directories
+
+all: directories bin/$(TARGET)
+
+directories:
+	mkdir -p obj
 
 bin/$(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $(subst src,obj,$(OBJS)) $(LIBS)
