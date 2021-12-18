@@ -9,6 +9,8 @@ endif
 
 CC = $(TOOLCHAIN)/bin/aarch64-linux-android30-clang
 CPP = $(TOOLCHAIN)/bin/aarch64-linux-android30-clang
+PROTOC = protoc
+PROTOCFLAGS = --cpp_out=.
 
 CFLAGS = -std=c17 -O3 -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
 CPPFLAGS = -std=c++17 -O3 -fstrict-aliasing -Wno-gnu-anonymous-struct -Wno-nested-anon-types -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
@@ -18,16 +20,24 @@ LDFLAGS = -Llib/android30 -pthread -rpath '$ORIGIN/../lib'
 LIBS = -L$(TOOLCHAIN)/sysroot/usr/lib/aarch64-linux-android/30 -lstdc++ -lz -lm -lopus -luwebsockets -lraptorq -lck -lr8brain -lprotobuf-lite -llog -lOpenSLES -loboe
 
 TARGET = waterslide-android30
+PROTOBUFS = init-config.proto monitor.proto
 SRCSC = main.c sender.c receiver.c globals.c stats.c utils.c circ.c slip.c mux.c demux.c endpoint.c monitor.c
-SRCSCPP = syncer.cpp init-config.pb.cpp config.cpp audio-android.cpp
+SRCSCPP = syncer.cpp config.cpp audio-android.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
 OBJS = $(subst .c,.o,$(addprefix src/,$(SRCSC))) $(subst .cpp,.o,$(addprefix src/,$(SRCSCPP)))
 
-.PHONY: directories
+.PHONY: setup
 
-all: directories bin/$(TARGET)
+all: setup protobufs bin/$(TARGET)
 
-directories:
-	mkdir -p obj bin
+protobufs: $(PROTOBUFS)
+
+setup:
+	mkdir -p obj/protobufs bin include/protobufs src/protobufs
+
+%.proto:
+	$(PROTOC) $(PROTOCFLAGS) protobufs/$@
+	mv $(subst .proto,.pb.cc,$(addprefix protobufs/,$@)) $(subst .proto,.pb.cpp,$(addprefix src/protobufs/,$@))
+	mv $(subst .proto,.pb.h,$(addprefix protobufs/,$@)) include/protobufs
 
 bin/$(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $(subst src,obj,$(OBJS)) $(LIBS)
@@ -39,4 +49,8 @@ bin/$(TARGET): $(OBJS)
 	$(CPP) $(CPPFLAGS) -c $< -o $(subst src,obj,$@)
 
 clean:
-	rm -f $(subst src,obj,$(OBJS)) bin/$(TARGET)
+	rm -f \
+		$(subst src,obj,$(OBJS)) \
+		$(subst .proto,.pb.cpp,$(addprefix src/protobufs/,$(PROTOBUFS))) \
+		$(subst .proto,.pb.h,$(addprefix include/protobufs/,$(PROTOBUFS))) \
+		bin/$(TARGET) \

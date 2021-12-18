@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "globals.h"
-#include "init-config.pb.h"
+#include "protobufs/init-config.pb.h"
 #include "config.h"
 
 /*

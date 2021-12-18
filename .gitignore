@@ -38,3 +38,5 @@ include/deps/
 licenses/
 monitor/dist/
 frontend/out/
+src/protobufs/
+include/protobufs/
