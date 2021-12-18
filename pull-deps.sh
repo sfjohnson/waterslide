@@ -20,13 +20,21 @@ download () {
   popd > /dev/null
 
   curl https://github.com/$USERNAME/$3/releases/download/$2/LICENSE --output licenses/$3.txt -s -L
+
+  if [ $3 = "protobuf" ]; then
+    echo "Downloading protoc binary..."
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+      curl https://github.com/$USERNAME/$3/releases/download/$2/protoc-linux --output bin/protoc -s -L
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+      curl https://github.com/$USERNAME/$3/releases/download/$2/protoc-macos10 --output bin/protoc -s -L
+    fi
+    chmod +x bin/protoc
+  fi
 }
 
-mkdir -p lib/macos10
-mkdir -p lib/android30
-mkdir -p licenses
+mkdir -p bin lib/macos10 lib/android30 licenses
 
-download all     v3.19.25     protobuf         libprotobuf-lite
+download all     v3.19.27     protobuf         libprotobuf-lite
 download all     v0.7.12      ck               libck
 download android v1.6.3       oboe             liboboe
 download macos   v19.7.3      portaudio        libportaudio
@@ -35,7 +43,6 @@ download all     v1.4.8       opus             libopus
 download all     v1.7.3       raptorq          libraptorq
 download all     v19.7.11     uWebSockets      libuwebsockets
 
-# Fix protobuf include path
 echo "Fixing protobuf include path..."
 mkdir -p include/deps/google
 cp -a include/deps/protobuf include/deps/google

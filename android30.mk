@@ -9,7 +9,7 @@ endif
 
 CC = $(TOOLCHAIN)/bin/aarch64-linux-android30-clang
 CPP = $(TOOLCHAIN)/bin/aarch64-linux-android30-clang
-PROTOC = protoc
+PROTOC = bin/protoc
 PROTOCFLAGS = --cpp_out=.
 
 CFLAGS = -std=c17 -O3 -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
@@ -32,7 +32,7 @@ all: setup protobufs bin/$(TARGET)
 protobufs: $(PROTOBUFS)
 
 setup:
-	mkdir -p obj/protobufs bin include/protobufs src/protobufs
+	mkdir -p obj/protobufs include/protobufs src/protobufs
 
 %.proto:
 	$(PROTOC) $(PROTOCFLAGS) protobufs/$@

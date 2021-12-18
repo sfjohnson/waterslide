@@ -1,6 +1,6 @@
 CC = /usr/local/opt/llvm/bin/clang
 CPP = /usr/local/opt/llvm/bin/clang
-PROTOC = protoc
+PROTOC = bin/protoc
 PROTOCFLAGS = --cpp_out=.
 # CFLAGS = -g3 -fno-omit-frame-pointer -fsanitize=address
 # LIBS = -g3 -fno-omit-frame-pointer -fsanitize=address
@@ -22,7 +22,7 @@ all: setup protobufs bin/$(TARGET)
 protobufs: $(PROTOBUFS)
 
 setup:
-	mkdir -p obj/protobufs bin include/protobufs src/protobufs
+	mkdir -p obj/protobufs include/protobufs src/protobufs
 
 %.proto:
 	$(PROTOC) $(PROTOCFLAGS) protobufs/$@

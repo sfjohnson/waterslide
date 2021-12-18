@@ -15,9 +15,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup dependencies
-        run: |
-          brew install protobuf
-          ./pull-deps.sh
+        run: ./pull-deps.sh
 
       - name: Make
         run: make -f macos10.mk
@@ -31,9 +29,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup dependencies
-        run: |
-          sudo apt install protobuf-compiler
-          ./pull-deps.sh
+        run: ./pull-deps.sh
 
       - name: Make
         run: make -f android30.mk
