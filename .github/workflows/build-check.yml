@@ -1,0 +1,37 @@
+name: Build Check
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-macos:
+    runs-on: macos-10.15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Setup dependencies
+        run: |
+          brew install openssl@3
+          ./pull-deps.sh
+
+      - name: Make
+        run: make -f macos10.mk
+
+  build-android:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Setup dependencies
+        run: ./pull-deps.sh
+
+      - name: Make
+        run: make -f android30.mk

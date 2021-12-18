@@ -45,9 +45,9 @@ brew install openssl@3
 ## Setup (Android specific)
 
 1. Install Android NDK
-2. Set the `ANDROID_NDK` env var, e.g.
+2. Set the `ANDROID_NDK_HOME` env var, e.g.
 ```sh
-export ANDROID_NDK=/Users/<username>/Library/Android/sdk/ndk/21.4.7075529
+export ANDROID_NDK_HOME=/Users/<username>/Library/Android/sdk/ndk/21.4.7075529
 ```
 
 ## Build macOS 10.x
