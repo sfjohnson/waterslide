@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include "portaudio/portaudio.h"
-#include "stats.h"
 #include "syncer.h"
 #include "globals.h"
 #include "audio.h"
@@ -14,7 +13,7 @@ static int playCallback (const void *inputBuffer, void *outputBuffer, unsigned l
   for (unsigned long i = 0; i < framesPerBuffer; i++) {
     intptr_t outFrame = 0;
     if (!ck_ring_dequeue_spsc(_ring, _ringBuf, &outFrame)) {
-      stats_ch1.ringUnderrunCount++;
+      globals_add1ui(statsCh1Audio, bufferUnderrunCount, 1);
     }
 
     // DEBUG: max 2 channels for 32-bit arch, max 4 channels for 64-bit

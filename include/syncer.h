@@ -1,5 +1,6 @@
 #ifndef _SYNCER_H
 #define _SYNCER_H
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,4 +15,5 @@ void syncer_deinit ();
 #ifdef __cplusplus
 }
 #endif
+
 #endif

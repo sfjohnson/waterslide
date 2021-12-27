@@ -2,7 +2,6 @@
 #include "r8brain-free-src/CDSPResampler.h"
 #include "globals.h"
 #include "syncer.h"
-#include "stats.h"
 
 using namespace r8b;
 
@@ -43,13 +42,12 @@ int syncer_init (double srcRate, double dstRate, int maxInBufLen) {
 
 static void setAudioStats (double dSample, int iSample, int channel) {
   if (iSample > 32767 || iSample < -32768) {
-    stats_ch1.audioClippingCount[channel]++;
+    globals_add1uiv(statsCh1Audio, clippingCounts, channel, 1);
   }
 
   double levelFast, levelSlow;
-  // https://blog.regehr.org/archives/959
-  memcpy(&levelFast, &stats_ch1.audioLevelsFast[channel], 8);
-  memcpy(&levelSlow, &stats_ch1.audioLevelsSlow[channel], 8);
+  globals_get1ffv(statsCh1Audio, levelsFast, channel, &levelFast);
+  globals_get1ffv(statsCh1Audio, levelsSlow, channel, &levelSlow);
 
   double levelFastDiff = fabs(dSample) - levelFast;
   double levelSlowDiff = fabs(dSample) - levelSlow;
@@ -65,8 +63,8 @@ static void setAudioStats (double dSample, int iSample, int channel) {
     levelSlow += levelSlowRelease * levelSlowDiff;
   }
 
-  memcpy(&stats_ch1.audioLevelsFast[channel], &levelFast, 8);
-  memcpy(&stats_ch1.audioLevelsSlow[channel], &levelSlow, 8);
+  globals_set1ffv(statsCh1Audio, levelsFast, channel, levelFast);
+  globals_set1ffv(statsCh1Audio, levelsSlow, channel, levelSlow);
 }
 
 int syncer_enqueueBuf (const int16_t *inBuf, int inFrameCount, ck_ring_t *ring, ck_ring_buffer_t *ringBuf) {
@@ -114,7 +112,7 @@ int syncer_enqueueBuf (const int16_t *inBuf, int inFrameCount, ck_ring_t *ring, 
     memcpy(&outFrame, frameBuf, 2 * audioChannelCount);
 
     if (!ck_ring_enqueue_spsc(ring, ringBuf, (void*)outFrame)) {
-      stats_ch1.ringOverrunCount++;
+      globals_add1ui(statsCh1Audio, bufferOverrunCount, 1);
       return -2;
     }
   }

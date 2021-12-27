@@ -8,8 +8,6 @@
 #include "globals.h"
 #include "demux.h"
 #include "endpoint.h"
-#include "stats.h"
-#include "monitor.h"
 #include "audio.h"
 
 // #define REMOTE_ADDR 0x6401a8c0 // 192.168.1.100
@@ -45,7 +43,7 @@ static int decodeOpusPacket (const uint8_t *buf, int len) {
   int result = opus_decode(decoder, buf, len, opusDecodedBuf, opusFrameSize, 0);
   if (result != opusFrameSize) {
     memset(opusDecodedBuf, 0, 2 * audioChannelCount * opusFrameSize);
-    stats_ch1.codecErrorCount++;
+    globals_add1ui(statsCh1Audio, codecErrorCount, 1);
     return -1;
   }
 
@@ -76,7 +74,7 @@ static int decodeOpusPacket (const uint8_t *buf, int len) {
     printf("reset\n");
   }
 
-  stats_ch1.lastRingSize = decodeRingSize;
+  globals_set1ui(statsCh1Audio, streamBufferPos, decodeRingSize);
   return 0;
 }
 
@@ -95,11 +93,11 @@ static int onBlockCh1 (const uint8_t *buf, int sbn) {
   }
   sbnLast = sbn;
 
-  stats_ch1.lastBlockSbnDiff = sbnDiff;
+  globals_set1i(statsCh1, lastBlockSbnDiff, sbnDiff);
   if (sbnDiff == 0) {
-    stats_ch1.dupBlockCount++;
+    globals_add1ui(statsCh1, dupBlockCount, 1);
   } else if (sbnDiff < 0 || sbnDiff > 1) {
-    stats_ch1.oooBlockCount++;
+    globals_add1ui(statsCh1, oooBlockCount, 1);
   }
 
   bool esc = false;
@@ -184,12 +182,6 @@ int receiver_init () {
   char audioDeviceName[100] = { 0 };
   globals_get1s(audio, deviceName, audioDeviceName, sizeof(audioDeviceName));
   if (audio_start(audioDeviceName) < 0) return -8;
-
-  err = monitor_init();
-  if (err < 0) {
-    printf("monitor_init failed: %d\n", err);
-    return -9;
-  }
 
   err = endpoint_init(true, globals_get1iv(endpoints, port, 0), globals_get1uiv(endpoints, addr, 0), 0x00000000, demux_readPacket);
   if (err < 0) {

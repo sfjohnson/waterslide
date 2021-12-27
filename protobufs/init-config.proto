@@ -1,7 +1,7 @@
 syntax = "proto3";
 option optimize_for = LITE_RUNTIME;
 
-message InitConfig {
+message InitConfigProto {
   enum Mode {
     SENDER = 0;
     RECEIVER = 1;

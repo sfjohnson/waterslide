@@ -2,8 +2,9 @@
   import AudioMeter from './AudioMeter.svelte'
   import StreamMeter from './StreamMeter.svelte'
   import StreamStats from './StreamStats.svelte'
+  import protobuf from 'protobufjs'
 
-  const wsServerAddr = "ws://192.168.1.101:7681"
+  const wsServerAddr = "ws://localhost:7681"
 
   const config = {
     audioChannelCount: 2,
@@ -30,25 +31,26 @@
   }
 
   const wsClient = new WebSocket(wsServerAddr)
-  wsClient.addEventListener('open', (event) => {
+  wsClient.addEventListener('open', async (event) => {
+    const proto = (await protobuf.load('./monitor.proto')).lookupType('MonitorProto')
+
     wsClient.send('Hello Server!')
     wsClient.onmessage = async (event) => {
       if (!(event.data instanceof Blob)) return
 
-      const view = new DataView(await event.data.arrayBuffer());
-      if (view.byteLength !== 64) return
-      currentState.audioLevelsFast[0] = view.getFloat64(0, true);
-      currentState.audioLevelsFast[1] = view.getFloat64(8, true);
-      currentState.audioLevelsSlow[0] = view.getFloat64(16, true);
-      currentState.audioLevelsSlow[1] = view.getFloat64(24, true);
-      currentState.audioClippingCount[0] = view.getInt32(32, true);
-      currentState.audioClippingCount[1] = view.getInt32(36, true);
-      currentState.streamBufferPos = view.getInt32(40, true);
-      currentState.bufferOverrunCount = view.getInt32(44, true);
-      currentState.bufferUnderrunCount = view.getInt32(48, true);
-      currentState.dupBlockCount = view.getInt32(52, true);
-      currentState.oooBlockCount = view.getInt32(56, true);
-      currentState.codecErrorCount = view.getInt32(60, true);
+      const msgCh1 = proto.decode(new Uint8Array(await event.data.arrayBuffer())).muxChannel[0]
+      currentState.audioLevelsFast[0] = msgCh1.audioStats.audioChannel[0].levelFast
+      currentState.audioLevelsFast[1] = msgCh1.audioStats.audioChannel[1].levelFast
+      currentState.audioLevelsSlow[0] = msgCh1.audioStats.audioChannel[0].levelSlow
+      currentState.audioLevelsSlow[1] = msgCh1.audioStats.audioChannel[1].levelSlow
+      currentState.audioClippingCount[0] = msgCh1.audioStats.audioChannel[0].clippingCount
+      currentState.audioClippingCount[1] = msgCh1.audioStats.audioChannel[1].clippingCount
+      currentState.streamBufferPos = msgCh1.audioStats.streamBufferPos
+      currentState.bufferOverrunCount = msgCh1.audioStats.bufferOverrunCount
+      currentState.bufferUnderrunCount = msgCh1.audioStats.bufferUnderrunCount
+      currentState.dupBlockCount = msgCh1.dupBlockCount
+      currentState.oooBlockCount = msgCh1.oooBlockCount
+      currentState.codecErrorCount = msgCh1.audioStats.codecErrorCount
     }
   })
 </script>

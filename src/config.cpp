@@ -82,25 +82,33 @@ int config_init (const char *b64ConfigStr) {
   size_t bufLen = 0;
   uint8_t *buf = base64Decode((uint8_t *)b64ConfigStr, strlen(b64ConfigStr), &bufLen);
 
-  InitConfig initConfig;
+  InitConfigProto initConfig;
   initConfig.ParseFromArray(buf, bufLen);
   free(buf);
 
-  // printf("\nmode: %s\n", initConfig.Mode_Name(initConfig.mode()).c_str());
   globals_set1i(root, mode, initConfig.mode());
 
-  // printf("\nendpoints:\n");
+  // Validate fields with static limits
+
   int endpointCount = initConfig.endpoints_size();
   if (endpointCount > MAX_ENDPOINTS) {
-    printf("Init config: Too many endpoints!\n");
+    printf("Init config: Too many endpoints! Max is %d.\n", MAX_ENDPOINTS);
     return -1;
   }
 
+  int audioChannelCount = initConfig.audio().channelcount();
+  if (audioChannelCount > MAX_AUDIO_CHANNELS) {
+    printf("Init config: Too many audio channels! Max is %d.\n", MAX_AUDIO_CHANNELS);
+    return -2;
+  }
+
+  // Transfer protobuf to global store
+
   for (int i = 0; i < endpointCount; i++) {
-    const InitConfig_Endpoint &endpoint = initConfig.endpoints(i);
+    const InitConfigProto_Endpoint &endpoint = initConfig.endpoints(i);
     if (endpoint.addr().length() != 4) {
       printf("Init config: Invalid endpoint addr length!\n");
-      return -2;
+      return -3;
     }
 
     const uint8_t *addrBuf = (const uint8_t*)endpoint.addr().c_str();
@@ -114,7 +122,7 @@ int config_init (const char *b64ConfigStr) {
   globals_set1i(mux, maxChannels, initConfig.mux().maxchannels());
   globals_set1i(mux, maxPacketSize, initConfig.mux().maxpacketsize());
 
-  globals_set1i(audio, channelCount, initConfig.audio().channelcount());
+  globals_set1i(audio, channelCount, audioChannelCount);
   globals_set1i(audio, ioSampleRate, initConfig.audio().iosamplerate());
   globals_set1s(audio, deviceName, initConfig.audio().devicename().c_str());
   globals_set1ff(audio, levelSlowAttack, initConfig.audio().levelslowattack());

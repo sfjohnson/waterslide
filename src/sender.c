@@ -13,7 +13,6 @@
 #include "mux.h"
 #include "raptorq/raptorq.h"
 #include "syncer.h"
-#include "stats.h"
 #include "xsem.h"
 
 // #define REMOTE_ADDR 0xdb1fc923 // 35.201.31.219
@@ -60,7 +59,7 @@ static void *startEncodeThread (void *arg) {
 
   while (true) {
     int encodeRingSize = ck_ring_size(&encodeRing);
-    stats_ch1.lastRingSize = encodeRingSize;
+    globals_set1ui(statsCh1Audio, streamBufferPos, encodeRingSize);
 
     if (encodeRingSize < opusFrameSize) {
       xsem_wait(&encodeSem);
@@ -79,7 +78,7 @@ static void *startEncodeThread (void *arg) {
 
     int encodedLen = opus_encode(encoder, opusFrameBuf, opusFrameSize, opusEncodedBuf, opusMaxPacketSize);
     if (encodedLen < 0) {
-      stats_ch1.codecErrorCount++;
+      globals_add1ui(statsCh1Audio, codecErrorCount, 1);
       continue;
     }
 

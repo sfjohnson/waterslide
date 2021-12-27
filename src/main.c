@@ -5,7 +5,7 @@
 #include "globals.h"
 #include "sender.h"
 #include "receiver.h"
-#include "stats.h"
+#include "monitor.h"
 
 int main (int argc, char *argv[]) {
   // Disable full buffering when executed outside of a terminal (e.g. NodeJS spawn)
@@ -18,8 +18,8 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  if (sizeof(double) != 8) {
-    printf("Arch check failed: double is not 64 bits\n");
+  if (sizeof(double) != 8 || sizeof(float) != 4) {
+    printf("Arch check failed: double and float are not the expected size.\n");
     return EXIT_FAILURE;
   }
 
@@ -30,8 +30,8 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  if ((err = stats_init()) < 0) {
-    printf("Stats init failed: %d\n", err);
+  if ((err = monitor_init()) < 0) {
+    printf("Monitor init failed: %d\n", err);
     return EXIT_FAILURE;
   }
 

@@ -14,7 +14,7 @@ if (process.argv.length < 3) {
   process.exit(1)
 }
 
-const initConfigProto = (await protobuf.load('../protobufs/init-config.proto')).lookupType('InitConfig')
+const initConfigProto = (await protobuf.load('../protobufs/init-config.proto')).lookupType('InitConfigProto')
 const configString = (initConfigProto.encode({
   mode: 0, // 0 = sender, 1 = receiver
   endpoints: [parseAddrIpv4(process.argv[2])],

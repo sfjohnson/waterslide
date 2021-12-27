@@ -11,8 +11,8 @@ LIBS = -lstdc++ -lm -lz -lopus -lportaudio -lr8brain -lraptorq -lck -lssl -lcryp
 
 TARGET = waterslide-macos10
 PROTOBUFS = init-config.proto monitor.proto
-SRCSC = main.c sender.c receiver.c globals.c stats.c utils.c circ.c slip.c mux.c demux.c endpoint.c audio-macos.c monitor.c
-SRCSCPP = syncer.cpp config.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
+SRCSC = main.c sender.c receiver.c globals.c utils.c circ.c slip.c mux.c demux.c endpoint.c audio-macos.c
+SRCSCPP = syncer.cpp config.cpp monitor.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
 OBJS = $(subst .c,.o,$(addprefix src/,$(SRCSC))) $(subst .cpp,.o,$(addprefix src/,$(SRCSCPP)))
 
 .PHONY: setup
