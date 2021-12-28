@@ -40,6 +40,7 @@ cd waterslide
 2. Run
 ```sh
 brew install openssl@3
+brew install llvm@13
 ```
 
 ## Setup (Android specific)
