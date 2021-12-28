@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include "oboe/Oboe.h"
-#include "stats.h"
 #include "syncer.h"
 #include "globals.h"
 #include "audio.h"
@@ -20,7 +19,7 @@ public:
     for (int i = 0; i < numFrames; i++) {
       intptr_t outFrame = 0;
       if (!ck_ring_dequeue_spsc(_ring, _ringBuf, &outFrame)) {
-        stats_ch1.ringUnderrunCount++;
+        globals_add1ui(statsCh1Audio, bufferUnderrunCount, 1);
       }
 
       // DEBUG: max 2 channels for 32-bit arch, max 4 channels for 64-bit

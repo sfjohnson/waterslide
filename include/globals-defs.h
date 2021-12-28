@@ -37,23 +37,23 @@ using namespace std;
 #define globals_get1ffv(GROUP, NAME, INDEX, VAR) _globals_get1ffv_##GROUP##_##NAME(INDEX, VAR)
 #define globals_get1s(GROUP, NAME, VAR, MAX_LEN) _globals_get1s_##GROUP##_##NAME(VAR, MAX_LEN)
 
-#define globals_add1i(GROUP, NAME, VALUE) atomic_fetch_add_explicit(&globals_1i_##GROUP##_##NAME, VALUE, memory_order_relaxed)
-#define globals_add1ui(GROUP, NAME, VALUE) atomic_fetch_add_explicit(&globals_1ui_##GROUP##_##NAME, VALUE, memory_order_relaxed)
-#define globals_add1iv(GROUP, NAME, INDEX, VALUE) atomic_fetch_add_explicit(&globals_1iv_##GROUP##_##NAME[INDEX], VALUE, memory_order_relaxed)
-#define globals_add1uiv(GROUP, NAME, INDEX, VALUE) atomic_fetch_add_explicit(&globals_1uiv_##GROUP##_##NAME[INDEX], VALUE, memory_order_relaxed)
+#define globals_add1i(GROUP, NAME, VALUE) atomic_fetch_add_explicit(&globals_1i_##GROUP##_##NAME, (int)(VALUE), memory_order_relaxed)
+#define globals_add1ui(GROUP, NAME, VALUE) atomic_fetch_add_explicit(&globals_1ui_##GROUP##_##NAME, (unsigned int)(VALUE), memory_order_relaxed)
+#define globals_add1iv(GROUP, NAME, INDEX, VALUE) atomic_fetch_add_explicit(&globals_1iv_##GROUP##_##NAME[INDEX], (int)(VALUE), memory_order_relaxed)
+#define globals_add1uiv(GROUP, NAME, INDEX, VALUE) atomic_fetch_add_explicit(&globals_1uiv_##GROUP##_##NAME[INDEX], (unsigned int)(VALUE), memory_order_relaxed)
 
 // These go in the header file
 #define globals_declare1i(GROUP, NAME) \
-extern atomic_int_fast32_t globals_1i_##GROUP##_##NAME;
+extern atomic_int globals_1i_##GROUP##_##NAME;
 
 #define globals_declare1ui(GROUP, NAME) \
-extern atomic_uint_fast32_t globals_1ui_##GROUP##_##NAME;
+extern atomic_uint globals_1ui_##GROUP##_##NAME;
 
 #define globals_declare1iv(GROUP, NAME) \
-extern atomic_int_fast32_t globals_1iv_##GROUP##_##NAME[];
+extern atomic_int globals_1iv_##GROUP##_##NAME[];
 
 #define globals_declare1uiv(GROUP, NAME) \
-extern atomic_uint_fast32_t globals_1uiv_##GROUP##_##NAME[];
+extern atomic_uint globals_1uiv_##GROUP##_##NAME[];
 
 // atomic_uint_fast64_t punned as double
 // https://blog.regehr.org/archives/959
@@ -97,10 +97,10 @@ static inline int _globals_set1s_##GROUP##_##NAME (const char *s) { \
 }
 
 // These go in the source file
-#define globals_define1i(GROUP, NAME) atomic_int_fast32_t globals_1i_##GROUP##_##NAME = 0;
-#define globals_define1ui(GROUP, NAME) atomic_uint_fast32_t globals_1ui_##GROUP##_##NAME = 0;
-#define globals_define1iv(GROUP, NAME, LEN) atomic_int_fast32_t globals_1iv_##GROUP##_##NAME[LEN] = { 0 };
-#define globals_define1uiv(GROUP, NAME, LEN) atomic_uint_fast32_t globals_1uiv_##GROUP##_##NAME[LEN] = { 0 };
+#define globals_define1i(GROUP, NAME) atomic_int globals_1i_##GROUP##_##NAME = 0;
+#define globals_define1ui(GROUP, NAME) atomic_uint globals_1ui_##GROUP##_##NAME = 0;
+#define globals_define1iv(GROUP, NAME, LEN) atomic_int globals_1iv_##GROUP##_##NAME[LEN] = { 0 };
+#define globals_define1uiv(GROUP, NAME, LEN) atomic_uint globals_1uiv_##GROUP##_##NAME[LEN] = { 0 };
 #define globals_define1ff(GROUP, NAME) atomic_uint_fast64_t globals_1ff_##GROUP##_##NAME = 0;
 #define globals_define1ffv(GROUP, NAME, LEN) atomic_uint_fast64_t globals_1ffv_##GROUP##_##NAME[LEN] = { 0 };
 
