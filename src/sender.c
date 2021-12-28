@@ -15,8 +15,7 @@
 #include "syncer.h"
 #include "xsem.h"
 
-// #define REMOTE_ADDR 0xdb1fc923 // 35.201.31.219
-// #define REMOTE_ADDR 0x6501a8c0 // 192.168.1.101
+#define UNUSED __attribute__((unused))
 
 static OpusEncoder *encoder;
 static uint8_t *opusEncodedBuf;
@@ -32,7 +31,7 @@ static int encodeRingLength;
 
 // DEBUG: implement for Android
 #ifndef __ANDROID__
-static int recordCallback (const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void *userData) {
+static int recordCallback (const void *inputBuffer, UNUSED void *outputBuffer, unsigned long framesPerBuffer, UNUSED const PaStreamCallbackTimeInfo* timeInfo, UNUSED PaStreamCallbackFlags statusFlags, UNUSED void *userData) {
   // NOTE: the resampling is happening in the high-priority audio thread.
   int result = syncer_enqueueBuf(inputBuffer, framesPerBuffer, &encodeRing, encodeRingBuf);
   if (result < 0) return paContinue;
@@ -43,7 +42,7 @@ static int recordCallback (const void *inputBuffer, void *outputBuffer, unsigned
 }
 #endif
 
-static void *startEncodeThread (void *arg) {
+static void *startEncodeThread (UNUSED void *arg) {
   const int symbolLen = globals_get1i(fec, symbolLen);
   const int sourceSymbolsPerBlock = globals_get1i(fec, sourceSymbolsPerBlock);
   const int repairSymbolsPerBlock = globals_get1i(fec, repairSymbolsPerBlock);
@@ -154,7 +153,7 @@ int sender_init () {
   // DEBUG: 4096 is a magic number
   if (syncer_init(44100.0, 48000.0, 4096) < 0) return -6;
 
-  int err = endpoint_init(false, globals_get1iv(endpoints, port, 0), globals_get1uiv(endpoints, addr, 0), 0x00000000, NULL);
+  int err = endpoint_init(false, NULL);
   if (err < 0) {
     printf("endpoint_init error: %d\n", err);
     return -7;

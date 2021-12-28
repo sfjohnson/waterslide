@@ -106,18 +106,28 @@ int config_init (const char *b64ConfigStr) {
 
   for (int i = 0; i < endpointCount; i++) {
     const InitConfigProto_Endpoint &endpoint = initConfig.endpoints(i);
-    if (endpoint.addr().length() != 4) {
-      printf("Init config: Invalid endpoint addr length!\n");
+    size_t addrLen = endpoint.addr().length();
+    const uint8_t *addrBuf = (const uint8_t*)endpoint.addr().c_str();
+
+    if (addrLen == 4) {
+      // IPv4
+      uint32_t addrVal = 0;
+      memcpy(&addrVal, addrBuf, 4);
+      globals_set1uiv(endpoints, addr, i, addrVal);
+      // printf("%u.%u.%u.%u:%d\n", addrBuf[3], addrBuf[2], addrBuf[1], addrBuf[0], endpoint.port());
+    } else if (addrLen == 16) {
+      // IPv6
+      printf("Init config: IPv6 is not implemented!\n");
       return -3;
+    } else {
+      printf("Init config: Invalid endpoint addr length!\n");
+      return -4;
     }
 
-    const uint8_t *addrBuf = (const uint8_t*)endpoint.addr().c_str();
-    uint32_t addrVal = 0;
-    memcpy(&addrVal, addrBuf, 4);
-    globals_set1uiv(endpoints, addr, i, addrVal);
     globals_set1iv(endpoints, port, i, endpoint.port());
-    // printf("%u.%u.%u.%u:%d\n", addrBuf[3], addrBuf[2], addrBuf[1], addrBuf[0], endpoint.port());
   }
+
+  globals_set1i(endpoints, endpointCount, endpointCount);
 
   globals_set1i(mux, maxChannels, initConfig.mux().maxchannels());
   globals_set1i(mux, maxPacketSize, initConfig.mux().maxpacketsize());

@@ -56,6 +56,7 @@ int demux_readPacket (const uint8_t *buf, int bufLen) {
       demux_channel_t *chan = &channels[i];
       if (chan->chId == chId) {
         if (chunkLen != 4 + chan->symbolLen) return -8;
+        // Any network receive thread can call this function to add a chunk to any channel, so a lock is needed
         pthread_mutex_lock(&chan->_lock);
         int result = raptorq_decodePacket(&buf[pos], chunkLen, chan->_blockBuf, chan->symbolsPerBlock);
         if (result == chan->symbolsPerBlock * chan->symbolLen) {

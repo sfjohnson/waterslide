@@ -4,11 +4,13 @@
 #include "globals.h"
 #include "audio.h"
 
+#define UNUSED __attribute__((unused))
+
 static ck_ring_t *_ring;
 static ck_ring_buffer_t *_ringBuf;
 static int audioChannelCount;
 
-static int playCallback (const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void *userData) {
+static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, UNUSED const PaStreamCallbackTimeInfo* timeInfo, UNUSED PaStreamCallbackFlags statusFlags, UNUSED void *userData) {
   int16_t *outBuf = (int16_t *)outputBuffer;
   for (unsigned long i = 0; i < framesPerBuffer; i++) {
     intptr_t outFrame = 0;
@@ -45,10 +47,12 @@ int audio_init (ck_ring_t *ring, ck_ring_buffer_t *ringBuf) {
     return -3;
   }
 
+  printf("\nAvailable audio devices:\n");
   for (int deviceIndex = 0; deviceIndex < deviceCount; deviceIndex++) {
     const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(deviceIndex);
-    printf("Available device: %s\n", deviceInfo->name);
+    printf("* %s\n", deviceInfo->name);
   }
+  printf("\n");
 
   return 0;
 }

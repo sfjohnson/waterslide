@@ -11,6 +11,8 @@
 #include "protobufs/monitor.pb.h"
 #include "monitor.h"
 
+#define UNUSED __attribute__((unused))
+
 static int audioChannelCount;
 static std::atomic<uws_ws_t*> wsClient = NULL;
 
@@ -18,11 +20,11 @@ static void openHandler(uws_ws_t *ws) {
   wsClient = ws;
 }
 
-static void messageHandler(uws_ws_t *ws, const char *msg, size_t length, unsigned char opCode) {
+static void messageHandler(UNUSED uws_ws_t *ws, UNUSED const char *msg, UNUSED size_t length, UNUSED unsigned char opCode) {
   // printf("message (code: %d, length: %zu): %.*s\n", opCode, length, length, msg);
 }
 
-static void closeHandler(uws_ws_t *ws, int code) {
+static void closeHandler(UNUSED uws_ws_t *ws, UNUSED int code) {
   wsClient = NULL;
 }
 
@@ -33,7 +35,7 @@ static void listenHandler(void *listenSocket) {
   }
 }
 
-static void *startWsApp (void *arg) {
+static void *startWsApp (UNUSED void *arg) {
   uws_app_t *app = uws_createApp();
   uws_appWs(app, "/*", openHandler, messageHandler, closeHandler);
   uws_appListen(app, globals_get1i(monitor, wsPort), listenHandler);
@@ -42,7 +44,7 @@ static void *startWsApp (void *arg) {
   return NULL;
 }
 
-static void *statsLoop (void *arg) {
+static void *statsLoop (UNUSED void *arg) {
   MonitorProto proto;
   MonitorProto_MuxChannelStats *protoCh1 = proto.add_muxchannel();
   MonitorProto_AudioChannel **protoAudioChannels = new MonitorProto_AudioChannel*[audioChannelCount];

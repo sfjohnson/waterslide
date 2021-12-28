@@ -183,7 +183,7 @@ int receiver_init () {
   globals_get1s(audio, deviceName, audioDeviceName, sizeof(audioDeviceName));
   if (audio_start(audioDeviceName) < 0) return -8;
 
-  err = endpoint_init(true, globals_get1iv(endpoints, port, 0), globals_get1uiv(endpoints, addr, 0), 0x00000000, demux_readPacket);
+  err = endpoint_init(true, demux_readPacket);
   if (err < 0) {
     printf("endpoint_init error: %d\n", err);
     return -10;
