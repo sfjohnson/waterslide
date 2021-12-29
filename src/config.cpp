@@ -124,6 +124,7 @@ int config_init (const char *b64ConfigStr) {
       return -4;
     }
 
+    globals_set1sv(endpoints, interface, i, endpoint.interface().c_str());
     globals_set1iv(endpoints, port, i, endpoint.port());
   }
 

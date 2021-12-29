@@ -179,7 +179,7 @@ int receiver_init () {
 
   if (audio_init(&decodeRing, decodeRingBuf) < 0) return -7;
 
-  char audioDeviceName[100] = { 0 };
+  char audioDeviceName[MAX_DEVICE_NAME_LEN + 1] = { 0 };
   globals_get1s(audio, deviceName, audioDeviceName, sizeof(audioDeviceName));
   if (audio_start(audioDeviceName) < 0) return -8;
 

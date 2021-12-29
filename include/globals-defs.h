@@ -14,11 +14,12 @@ using namespace std;
 // Data types
 // 1i: scalar 32-bit signed integer
 // 1ui: scalar 32-bit unsigned integer
-// 1iv: individually addressed array of 32-bit signed integers
-// 1uiv: individually addressed array of 32-bit unsigned integers
+// 1iv: individually addressable array of 32-bit signed integers
+// 1uiv: individually addressable array of 32-bit unsigned integers
 // 1ff: scalar double-precision float
-// 1ffv: individually addressed array of doubles
+// 1ffv: individually addressable array of doubles
 // 1s: null-terminated char array
+// 1sv: individually addressable null-terminated char arrays
 
 #define globals_set1i(GROUP, NAME, VALUE) globals_1i_##GROUP##_##NAME = (VALUE)
 #define globals_set1ui(GROUP, NAME, VALUE) globals_1ui_##GROUP##_##NAME = (VALUE)
@@ -27,6 +28,7 @@ using namespace std;
 #define globals_set1ff(GROUP, NAME, VALUE) _globals_set1ff_##GROUP##_##NAME(VALUE)
 #define globals_set1ffv(GROUP, NAME, INDEX, VALUE) _globals_set1ffv_##GROUP##_##NAME(INDEX, VALUE)
 #define globals_set1s(GROUP, NAME, VALUE) _globals_set1s_##GROUP##_##NAME(VALUE)
+#define globals_set1sv(GROUP, NAME, INDEX, VALUE) _globals_set1sv_##GROUP##_##NAME(INDEX, VALUE)
 
 #define globals_get1i(GROUP, NAME) (globals_1i_##GROUP##_##NAME)
 #define globals_get1ui(GROUP, NAME) (globals_1ui_##GROUP##_##NAME)
@@ -35,7 +37,9 @@ using namespace std;
 
 #define globals_get1ff(GROUP, NAME, VAR) _globals_get1ff_##GROUP##_##NAME(VAR)
 #define globals_get1ffv(GROUP, NAME, INDEX, VAR) _globals_get1ffv_##GROUP##_##NAME(INDEX, VAR)
+// MAX_LEN is the maximum number of bytes that can be written to VAR, including the null terminator
 #define globals_get1s(GROUP, NAME, VAR, MAX_LEN) _globals_get1s_##GROUP##_##NAME(VAR, MAX_LEN)
+#define globals_get1sv(GROUP, NAME, INDEX, VAR, MAX_LEN) _globals_get1sv_##GROUP##_##NAME(INDEX, VAR, MAX_LEN)
 
 #define globals_add1i(GROUP, NAME, VALUE) atomic_fetch_add_explicit(&globals_1i_##GROUP##_##NAME, (int)(VALUE), memory_order_relaxed)
 #define globals_add1ui(GROUP, NAME, VALUE) atomic_fetch_add_explicit(&globals_1ui_##GROUP##_##NAME, (unsigned int)(VALUE), memory_order_relaxed)
@@ -96,6 +100,29 @@ static inline int _globals_set1s_##GROUP##_##NAME (const char *s) { \
   return len; \
 }
 
+#define globals_declare1sv(GROUP, NAME) \
+extern char globals_1sv_##GROUP##_##NAME[]; \
+extern size_t globals_len_1sv_##GROUP##_##NAME; \
+extern pthread_mutex_t globals_lock_1sv_##GROUP##_##NAME; \
+static inline int _globals_get1sv_##GROUP##_##NAME (size_t index, char *s, size_t maxLen) { \
+  const char *srcStr = &globals_1sv_##GROUP##_##NAME[(globals_len_1sv_##GROUP##_##NAME+1) * index]; \
+  size_t len = strlen(srcStr); \
+  if (len >= maxLen) return -1; \
+  pthread_mutex_lock(&globals_lock_1sv_##GROUP##_##NAME); \
+  memcpy(s, srcStr, len + 1); \
+  pthread_mutex_unlock(&globals_lock_1sv_##GROUP##_##NAME); \
+  return len; \
+} \
+static inline int _globals_set1sv_##GROUP##_##NAME (size_t index, const char *s) { \
+  size_t len = strlen(s); \
+  char *destStr = &globals_1sv_##GROUP##_##NAME[(globals_len_1sv_##GROUP##_##NAME+1) * index]; \
+  if (len > globals_len_1sv_##GROUP##_##NAME) return -1; \
+  pthread_mutex_lock(&globals_lock_1sv_##GROUP##_##NAME); \
+  memcpy(destStr, s, len + 1); \
+  pthread_mutex_unlock(&globals_lock_1sv_##GROUP##_##NAME); \
+  return len; \
+}
+
 // These go in the source file
 #define globals_define1i(GROUP, NAME) atomic_int globals_1i_##GROUP##_##NAME = 0;
 #define globals_define1ui(GROUP, NAME) atomic_uint globals_1ui_##GROUP##_##NAME = 0;
@@ -108,5 +135,12 @@ static inline int _globals_set1s_##GROUP##_##NAME (const char *s) { \
 char globals_1s_##GROUP##_##NAME[MAX_LEN + 1] = { 0 }; \
 size_t globals_len_1s_##GROUP##_##NAME = MAX_LEN; \
 pthread_mutex_t globals_lock_1s_##GROUP##_##NAME = PTHREAD_MUTEX_INITIALIZER;
+
+// STR_COUNT: number of individually addressable strings
+// MAX_STR_LEN: maximum number of characters per string, excluding null terminator (one additional char per string is allocated for it).
+#define globals_define1sv(GROUP, NAME, STR_COUNT, MAX_STR_LEN) \
+char globals_1sv_##GROUP##_##NAME[(MAX_STR_LEN+1) * STR_COUNT] = { 0 }; \
+size_t globals_len_1sv_##GROUP##_##NAME = MAX_STR_LEN; \
+pthread_mutex_t globals_lock_1sv_##GROUP##_##NAME = PTHREAD_MUTEX_INITIALIZER;
 
 #endif

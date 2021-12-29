@@ -5,11 +5,13 @@
 
 #define MAX_ENDPOINTS 16
 #define MAX_DEVICE_NAME_LEN 100
+#define MAX_NET_IF_NAME_LEN 20
 #define MAX_AUDIO_CHANNELS 64
 
 globals_declare1i(root, mode)
 
 globals_declare1i(endpoints, endpointCount)
+globals_declare1sv(endpoints, interface)
 globals_declare1uiv(endpoints, addr)
 globals_declare1iv(endpoints, port)
 

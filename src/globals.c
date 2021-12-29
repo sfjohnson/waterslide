@@ -3,6 +3,7 @@
 globals_define1i(root, mode)
 
 globals_define1i(endpoints, endpointCount)
+globals_define1sv(endpoints, interface, MAX_ENDPOINTS, MAX_NET_IF_NAME_LEN)
 globals_define1uiv(endpoints, addr, MAX_ENDPOINTS)
 globals_define1iv(endpoints, port, MAX_ENDPOINTS)
 

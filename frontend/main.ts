@@ -9,15 +9,27 @@ const parseAddrIpv4 = (str: string) => {
   }
 }
 
-if (process.argv.length < 3) {
-  console.log('Usage: waterslide <remote-addr>:<remote-port>')
-  process.exit(1)
-}
+// if (process.argv.length < 3) {
+//   console.log('Usage: waterslide <remote-addr>:<remote-port>')
+//   process.exit(1)
+// }
 
 const initConfigProto = (await protobuf.load('../protobufs/init-config.proto')).lookupType('InitConfigProto')
 const configString = (initConfigProto.encode({
   mode: 0, // 0 = sender, 1 = receiver
-  endpoints: [parseAddrIpv4(process.argv[2])],
+  // endpoints: [parseAddrIpv4(process.argv[2])],
+  endpoints: [
+    {
+      addr: Buffer.from([192, 168, 4, 100]),
+      port: 12345,
+      interface: "en0"
+    },
+    {
+      addr: Buffer.from([127, 0, 0, 1]),
+      port: 12345,
+      interface: "lo0"
+    },
+  ],
   mux: {
     maxChannels: 10,
     maxPacketSize: 1500
