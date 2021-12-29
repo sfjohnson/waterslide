@@ -71,6 +71,7 @@ static int decodeOpusPacket (const uint8_t *buf, int len) {
         ck_ring_dequeue_spsc(&decodeRing, decodeRingBuf, &nothing);
       }
     }
+    // DEBUG: log
     printf("reset\n");
   }
 

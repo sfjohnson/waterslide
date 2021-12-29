@@ -40,7 +40,7 @@ download android v1.6.3       oboe             liboboe
 download macos   v19.7.3      portaudio        libportaudio
 download all     v5.2.5       r8brain-free-src libr8brain
 download all     v1.4.8       opus             libopus
-download all     v1.7.3       raptorq          libraptorq
+download all     v1.7.4       raptorq          libraptorq
 download all     v19.7.11     uWebSockets      libuwebsockets
 
 echo "Fixing protobuf include path..."

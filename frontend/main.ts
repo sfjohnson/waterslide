@@ -1,65 +1,28 @@
 import { spawn } from 'child_process'
 import protobuf from 'protobufjs'
+import { promises as fsp } from 'fs'
 
-const parseAddrIpv4 = (str: string) => {
-  let [ addr, port ] = str.split(':')
-  return {
-    addr: Buffer.from(addr.split('.').map((octet: string) => parseInt(octet))),
-    port: parseInt(port)
-  }
-}
-
-// if (process.argv.length < 3) {
-//   console.log('Usage: waterslide <remote-addr>:<remote-port>')
-//   process.exit(1)
+// const parseAddrIpv4 = (str: string) => {
+//   let [ addr, port ] = str.split(':')
+//   return {
+//     addr: Buffer.from(addr.split('.').map((octet: string) => parseInt(octet))),
+//     port: parseInt(port)
+//   }
 // }
 
+if (process.argv.length < 3) {
+  console.log('Usage: waterslide <config-file>')
+  process.exit(1)
+}
+
+let configFile: any = await fsp.readFile(process.argv[2])
+configFile = JSON.parse(configFile)
+for (const endpoint of configFile.endpoints) {
+  endpoint.addr = Buffer.from(endpoint.addr)
+}
+
 const initConfigProto = (await protobuf.load('../protobufs/init-config.proto')).lookupType('InitConfigProto')
-const configString = (initConfigProto.encode({
-  mode: 0, // 0 = sender, 1 = receiver
-  // endpoints: [parseAddrIpv4(process.argv[2])],
-  endpoints: [
-    {
-      addr: Buffer.from([192, 168, 4, 100]),
-      port: 12345,
-      interface: "en0"
-    },
-    {
-      addr: Buffer.from([127, 0, 0, 1]),
-      port: 12345,
-      interface: "lo0"
-    },
-  ],
-  mux: {
-    maxChannels: 10,
-    maxPacketSize: 1500
-  },
-  audio: {
-    channelCount: 2,
-    ioSampleRate: 44100,
-    deviceName: 'Soundflower (2ch)',
-    levelSlowAttack: 0.004,
-    levelSlowRelease: 0.0008,
-    levelFastAttack: 0.31,
-    levelFastRelease: 0.00003
-  },
-  opus: {
-    bitrate: 256000,
-    frameSize: 240,
-    maxPacketSize: 400,
-    sampleRate: 48000,
-    encodeRingLength: 8192,
-    decodeRingLength: 8192
-  },
-  fec: {
-    symbolLen: 256,
-    sourceSymbolsPerBlock: 6,
-    repairSymbolsPerBlock: 3
-  },
-  monitor: {
-    wsPort: 7681
-  }
-}).finish() as Buffer).toString('base64')
+const configString = (initConfigProto.encode(configFile).finish() as Buffer).toString('base64')
 
 const waterslide = spawn('../bin/waterslide-macos10', [configString])
 waterslide.stdout.pipe(process.stdout)
