@@ -24,7 +24,7 @@ static void *recvLoop (void *arg) {
 
   while (recvLoopRunning) {
     ssize_t recvLen = recv(socket, recvBuf, sizeof(recvBuf), 0);
-    if (recvLen == -1) continue;
+    if (recvLen < 0) continue;
 
     _onPacket(recvBuf, recvLen);
   }
@@ -163,8 +163,9 @@ int endpoint_init (bool rx, int (*onPacket)(const uint8_t*, int)) {
 
 int endpoint_send (const uint8_t *buf, int bufLen) {
   for (int i = 0; i < endpointCount; i++) {
-    ssize_t sentLen = send(sockets[i], buf, bufLen, 0);
-    if (sentLen != bufLen) return -i - 1;
+    /*ssize_t sentLen = */send(sockets[i], buf, bufLen, 0);
+    // DEBUG: if send failed, close this socket and try to re-open on a timer
+    // if (sentLen != bufLen) return -i - 1;
   }
   return 0;
 }

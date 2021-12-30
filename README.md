@@ -9,7 +9,7 @@ This project is in the proof-of-concept stage and doesn't work very well yet. Li
 - [x] High bitrate Opus compressed audio transport
 - [x] Forward error correction (no waiting for packet re-transmissions)
 - [x] Works over the internet and on a LAN
-- [ ] Multihoming
+- [x] Multihoming
 - [ ] Lossless audio
 - [ ] Support for over 4 audio channels
 - [ ] Resampling to correct for clock drift between sender and receiver
