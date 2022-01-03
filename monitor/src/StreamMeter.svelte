@@ -1,8 +1,6 @@
 <script>
   export let bufferSize = 1024
-  export let bufferPos = 0
-  export let underrunCount = 0
-  export let overrunCount = 0
+  export let data = {}
 
   const meterHeight = 300
   const levelDiv = 8
@@ -14,10 +12,10 @@
     { active: false, prevCount: 0, timeout: null } // overrun
   ]
 
-  $: if (underrunCount || overrunCount) {
+  $: if (data.bufferUnderrunCount || data.bufferOverrunCount) {
     for (let i = 0; i < markers.length; i++) {
       const marker = markers[i]
-      const currentCount = i === 0 ? underrunCount : overrunCount
+      const currentCount = i === 0 ? data.bufferUnderrunCount : data.bufferOverrunCount
       if (currentCount > marker.prevCount) {
         clearTimeout(marker.timeout)
         marker.active = true
@@ -40,7 +38,7 @@
 
   $: redZoneHeight = activeMeterHeight / levelDiv
 
-  $: posMarkerTop = activeMeterHeight * (1 - bufferPos/(bufferSize-1)) + endMarkerHeight
+  $: posMarkerTop = activeMeterHeight * (1 - data.streamBufferPos/(bufferSize-1)) + endMarkerHeight
 </script>
 
 <div class="container">

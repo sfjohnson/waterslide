@@ -16,17 +16,17 @@ static int endpointCount = 0;
 static int *sockets = NULL; // length: endpointCount
 static pthread_t *recvThreads = NULL; // length: endpointCount
 static atomic_bool recvLoopRunning = true;
-static int (*_onPacket)(const uint8_t*, int) = NULL;
+static int (*_onPacket)(const uint8_t*, int, int) = NULL;
 
 static void *recvLoop (void *arg) {
   uint8_t recvBuf[1600] = { 0 };
-  int socket = *((int*)arg);
+  intptr_t epIndex = (intptr_t)arg;
 
   while (recvLoopRunning) {
-    ssize_t recvLen = recv(socket, recvBuf, sizeof(recvBuf), 0);
+    ssize_t recvLen = recv(sockets[epIndex], recvBuf, sizeof(recvBuf), 0);
     if (recvLen < 0) continue;
 
-    _onPacket(recvBuf, recvLen);
+    _onPacket(recvBuf, recvLen, epIndex);
   }
 
   return NULL;
@@ -101,7 +101,7 @@ static int bindSocketToIf (int socket, const char *ifName, UNUSED int ifLen, int
   return 0;
 }
 
-int endpoint_init (bool rx, int (*onPacket)(const uint8_t*, int)) {
+int endpoint_init (bool rx, int (*onPacket)(const uint8_t*, int, int)) {
   int err;
   _onPacket = onPacket;
   endpointCount = globals_get1i(endpoints, endpointCount);
@@ -153,8 +153,8 @@ int endpoint_init (bool rx, int (*onPacket)(const uint8_t*, int)) {
 
   if (onPacket == NULL) return 0;
 
-  for (int i = 0; i < endpointCount; i++) {
-    err = pthread_create(&recvThreads[i], NULL, recvLoop, &sockets[i]);
+  for (intptr_t i = 0; i < endpointCount; i++) {
+    err = pthread_create(&recvThreads[i], NULL, recvLoop, (void*)i);
     if (err != 0) return -20;
   }
 

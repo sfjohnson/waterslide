@@ -79,6 +79,7 @@ static int decodeOpusPacket (const uint8_t *buf, int len) {
   return 0;
 }
 
+// The channel lock in the demux module protects the static variables accessed here
 static int onBlockCh1 (const uint8_t *buf, int sbn) {
   static int opusEncodedBufPos = 0;
   // DEBUG: handle block loss
@@ -94,7 +95,6 @@ static int onBlockCh1 (const uint8_t *buf, int sbn) {
   }
   sbnLast = sbn;
 
-  globals_set1i(statsCh1, lastBlockSbnDiff, sbnDiff);
   if (sbnDiff == 0) {
     globals_add1ui(statsCh1, dupBlockCount, 1);
   } else if (sbnDiff < 0 || sbnDiff > 1) {

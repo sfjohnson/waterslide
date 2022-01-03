@@ -41,10 +41,9 @@ globals_declare1i(monitor, wsPort)
 
 globals_declare1ui(statsCh1, dupBlockCount)
 globals_declare1ui(statsCh1, oooBlockCount)
-globals_declare1i(statsCh1, lastBlockSbnDiff)
-globals_declare1ui(statsCh1, dupPacketCount)
-globals_declare1ui(statsCh1, oooPacketCount)
-
+globals_declare1iv(statsCh1Endpoints, lastSbn)
+globals_declare1uiv(statsCh1Endpoints, dupPacketCount)
+globals_declare1uiv(statsCh1Endpoints, oooPacketCount)
 globals_declare1uiv(statsCh1Audio, clippingCounts)
 globals_declare1ffv(statsCh1Audio, levelsFast)
 globals_declare1ffv(statsCh1Audio, levelsSlow)

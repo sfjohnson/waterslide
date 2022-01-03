@@ -1,17 +1,11 @@
 <script>
-  export let channelCount = 2
-  export let clippingCount = [0, 0]
-  export let levelsLinearFast = [0, 0]
-  export let levelsLinearSlow = [0, 0]
+  export let data = []
 
-  const levelHeights = [0, 0]
-  const peakHeights = [0, 0]
+  const levelHeights = []
+  const peakHeights = []
+  let clipping = []
 
-  let clipping = [
-    { active: false, prevCount: 0, timeout: null },
-    { active: false, prevCount: 0, timeout: null }
-  ]
-
+  const clippingMarkerTime = 4000 // ms
   const meterHeight = 300
   const zeroMarkerHeight = 3
   const pixelsPerDb = 4.6
@@ -25,26 +19,21 @@
     }
   })
 
-  $: if (levelsLinearFast || levelsLinearSlow) {
-    for (let i = 0; i < levelsLinearFast.length; i++) {
-      levelHeights[i] = (meterHeight-zeroMarkerHeight) + 20 * pixelsPerDb * Math.log10(levelsLinearSlow[i])
-      peakHeights[i] = (meterHeight-zeroMarkerHeight) + 20 * pixelsPerDb * Math.log10(levelsLinearFast[i])
-    }
-  }
+  $: for (let i = 0; i < data.length; i++) {
+    levelHeights[i] = (meterHeight-zeroMarkerHeight) + 20 * pixelsPerDb * Math.log10(data[i].levelSlow)
+    peakHeights[i] = (meterHeight-zeroMarkerHeight) + 20 * pixelsPerDb * Math.log10(data[i].levelFast)
 
-  $: if (clippingCount) {
-    for (let i = 0; i < clippingCount.length; i++) {
-      const entry = clipping[i]
-      if (clippingCount[i] > entry.prevCount) {
-        clearTimeout(entry.timeout)
-        entry.active = true
-        entry.timeout = setTimeout(() => {
-          entry.active = false
-          clipping = clipping
-        }, 4000)
-      }
-      entry.prevCount = clippingCount[i]
+    let entry = clipping[i]
+    if (!entry) entry = clipping[i] = { active: false, prevCount: 0, timeout: null }
+    if (data[i].clippingCount > entry.prevCount) {
+      clearTimeout(entry.timeout)
+      entry.active = true
+      entry.timeout = setTimeout(() => {
+        entry.active = false
+        clipping = clipping
+      }, clippingMarkerTime)
     }
+    entry.prevCount = data[i].clippingCount
     clipping = clipping
   }
 </script>
@@ -58,7 +47,7 @@
       </div>
     {/each}
   </div>
-  {#each { length: channelCount } as _, i}
+  {#each data as _, i}
     <div class="meter-bar">
       <div class="{clipping[i].active ? "clipping clipping-marker" : "clipping-marker"}"></div>
       <div class="fill"></div>

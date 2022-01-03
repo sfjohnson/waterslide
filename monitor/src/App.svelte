@@ -1,34 +1,53 @@
 <script>
-  import AudioMeter from './AudioMeter.svelte'
-  import StreamMeter from './StreamMeter.svelte'
-  import StreamStats from './StreamStats.svelte'
+  import AudioSection from './AudioSection.svelte'
+  import BlocksSection from './BlocksSection.svelte'
+  import EndpointsSection from './EndpointsSection.svelte'
   import protobuf from 'protobufjs'
 
-  const wsServerAddr = "ws://localhost:7681"
+  const wsServerAddr = 'ws://localhost:7681'
 
   const config = {
-    audioChannelCount: 2,
-    streamBufferSize: 8192,
-    statsLabels: [
-      { name: 'dupBlockCount', label: 'duplicate blocks' },
-      { name: 'oooBlockCount', label: 'out-of-order blocks' },
-      { name: 'codecErrorCount', label: 'codec errors' },
-      { name: 'bufferUnderrunCount', label: 'buffer underruns' },
-      { name: 'bufferOverrunCount', label: 'buffer overruns' },
-    ]
+    streamBufferSize: 8192
   }
 
-  const currentState = {
-    audioLevelsFast: [0.0, 0.0], // [0.501, 0.00794] -6 dB, -42 dB
-    audioLevelsSlow: [0.0, 0.0],
-    audioClippingCount: [0, 0],
-    streamBufferPos: config.streamBufferSize / 2,
-    bufferOverrunCount: 0,
-    bufferUnderrunCount: 0,
-    dupBlockCount: 0,
-    oooBlockCount: 0,
-    codecErrorCount: 0
-  }
+  let currentState = {}
+
+  // let currentState = {
+  //   dupBlockCount: 0,
+  //   oooBlockCount: 0,
+  //   endpoint: [
+  //     {
+  //       interface: 'eth0',
+  //       dupPacketCount: 0,
+  //       oooPacketCount: 0,
+  //       lastRelativeSbn: 0
+  //     },
+  //     {
+  //       interface: 'en15',
+  //       dupPacketCount: 0,
+  //       oooPacketCount: 0,
+  //       lastRelativeSbn: 0
+  //     }
+  //   ],
+  //   audioStats: {
+  //     audioChannel: [
+  //       {
+  //         clippingCount: 0,
+  //         levelFast: 0,
+  //         levelSlow: 0
+  //       },
+  //       {
+  //         clippingCount: 0,
+  //         levelFast: 0,
+  //         levelSlow: 0
+  //       }
+  //     ],
+  //     bufferOverrunCount: 0,
+  //     bufferUnderrunCount: 0,
+  //     codecErrorCount: 0,
+  //     streamBufferPos: 0
+  //   }
+  // }
 
   const wsClient = new WebSocket(wsServerAddr)
   wsClient.addEventListener('open', async (event) => {
@@ -39,50 +58,58 @@
       if (!(event.data instanceof Blob)) return
 
       const msgCh1 = proto.decode(new Uint8Array(await event.data.arrayBuffer())).muxChannel[0]
-      currentState.audioLevelsFast[0] = msgCh1.audioStats.audioChannel[0].levelFast
-      currentState.audioLevelsFast[1] = msgCh1.audioStats.audioChannel[1].levelFast
-      currentState.audioLevelsSlow[0] = msgCh1.audioStats.audioChannel[0].levelSlow
-      currentState.audioLevelsSlow[1] = msgCh1.audioStats.audioChannel[1].levelSlow
-      currentState.audioClippingCount[0] = msgCh1.audioStats.audioChannel[0].clippingCount
-      currentState.audioClippingCount[1] = msgCh1.audioStats.audioChannel[1].clippingCount
-      currentState.streamBufferPos = msgCh1.audioStats.streamBufferPos
-      currentState.bufferOverrunCount = msgCh1.audioStats.bufferOverrunCount
-      currentState.bufferUnderrunCount = msgCh1.audioStats.bufferUnderrunCount
-      currentState.dupBlockCount = msgCh1.dupBlockCount
-      currentState.oooBlockCount = msgCh1.oooBlockCount
-      currentState.codecErrorCount = msgCh1.audioStats.codecErrorCount
+      currentState = msgCh1
     }
   })
 </script>
 
-<main>
-  <AudioMeter
-    channelCount={config.audioChannelCount}
-    levelsLinearFast={currentState.audioLevelsFast}
-    levelsLinearSlow={currentState.audioLevelsSlow}
-    clippingCount={currentState.audioClippingCount}
-  />
-  <StreamMeter
-    bufferSize={config.streamBufferSize}
-    bufferPos={currentState.streamBufferPos}
-    underrunCount={currentState.bufferUnderrunCount}
-    overrunCount={currentState.bufferOverrunCount}
-  />
-  <StreamStats
-    labels={config.statsLabels}
-    data={currentState}
-  />
-</main>
+<div id="main">
+  <h1><span>ch1</span></h1>
+  <div class="row">
+    <AudioSection
+      config={config}
+      data={currentState.audioStats}
+    />
+    <BlocksSection
+      data={currentState}
+    />
+  </div>
+
+  <div class="row">
+    <EndpointsSection
+      data={currentState.endpoint}
+    />
+  </div>
+</div>
 
 <style>
   :global(body) {
-    margin: 10px;
+    margin: 10px 20px 20px 20px;
     font-family: sans-serif;
   }
 
-  main {
-    display: inline-flex;
-    padding: 20px;
-    background-color: rgb(248, 227, 239);
+  h1 {
+    font-size: 26px;
+    font-weight: normal;
+    width: 100%;
+    margin: 0px 0px 10px 0px;
+    background: linear-gradient(white 0%, white 49%, black 50%, black 51%, white 52%, white 100%);
+  }
+
+  h1 span {
+    background: white;
+    padding: 0px 5px 0px 0px;
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  #main {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
   }
 </style>

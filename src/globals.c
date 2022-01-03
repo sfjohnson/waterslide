@@ -33,10 +33,9 @@ globals_define1i(monitor, wsPort)
 
 globals_define1ui(statsCh1, dupBlockCount)
 globals_define1ui(statsCh1, oooBlockCount)
-globals_define1i(statsCh1, lastBlockSbnDiff)
-globals_define1ui(statsCh1, dupPacketCount)
-globals_define1ui(statsCh1, oooPacketCount)
-
+globals_define1iv(statsCh1Endpoints, lastSbn, MAX_ENDPOINTS)
+globals_define1uiv(statsCh1Endpoints, dupPacketCount, MAX_ENDPOINTS)
+globals_define1uiv(statsCh1Endpoints, oooPacketCount, MAX_ENDPOINTS)
 globals_define1uiv(statsCh1Audio, clippingCounts, MAX_AUDIO_CHANNELS)
 globals_define1ffv(statsCh1Audio, levelsFast, MAX_AUDIO_CHANNELS)
 globals_define1ffv(statsCh1Audio, levelsSlow, MAX_AUDIO_CHANNELS)

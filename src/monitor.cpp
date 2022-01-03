@@ -13,7 +13,7 @@
 
 #define UNUSED __attribute__((unused))
 
-static int audioChannelCount;
+static int audioChannelCount, endpointCount;
 static std::atomic<uws_ws_t*> wsClient = NULL;
 
 static void openHandler(uws_ws_t *ws) {
@@ -48,9 +48,21 @@ static void *statsLoop (UNUSED void *arg) {
   MonitorProto proto;
   MonitorProto_MuxChannelStats *protoCh1 = proto.add_muxchannel();
   MonitorProto_AudioChannel **protoAudioChannels = new MonitorProto_AudioChannel*[audioChannelCount];
+  MonitorProto_EndpointStats **protoEndpoints = new MonitorProto_EndpointStats*[endpointCount];
 
   for (int i = 0; i < audioChannelCount; i++) {
     protoAudioChannels[i] = protoCh1->mutable_audiostats()->add_audiochannel();
+  }
+  for (int i = 0; i < endpointCount; i++) {
+    protoEndpoints[i] = protoCh1->add_endpoint();
+    std::string ifName(MAX_NET_IF_NAME_LEN + 1, '\0');
+    int ifLen = globals_get1sv(endpoints, interface, i, &ifName[0], MAX_NET_IF_NAME_LEN + 1);
+    if (ifLen <= 0) {
+      ifName = "any";
+    } else {
+      ifName.resize(ifLen);
+    }
+    protoEndpoints[i]->set_interfacename(ifName);
   }
 
   while (true) {
@@ -68,9 +80,12 @@ static void *statsLoop (UNUSED void *arg) {
 
     protoCh1->set_dupblockcount(globals_get1ui(statsCh1, dupBlockCount));
     protoCh1->set_oooblockcount(globals_get1ui(statsCh1, oooBlockCount));
-    protoCh1->set_lastblocksbndiff(globals_get1i(statsCh1, lastBlockSbnDiff));
-    protoCh1->set_duppacketcount(globals_get1ui(statsCh1, dupPacketCount));
-    protoCh1->set_ooopacketcount(globals_get1ui(statsCh1, oooPacketCount));
+    int lastSbn0 = globals_get1iv(statsCh1Endpoints, lastSbn, 0);
+    for (int i = 0; i < endpointCount; i++) {
+      protoEndpoints[i]->set_lastrelativesbn(globals_get1iv(statsCh1Endpoints, lastSbn, i) - lastSbn0);
+      protoEndpoints[i]->set_duppacketcount(globals_get1uiv(statsCh1Endpoints, dupPacketCount, i));
+      protoEndpoints[i]->set_ooopacketcount(globals_get1uiv(statsCh1Endpoints, oooPacketCount, i));
+    }
     protoCh1->mutable_audiostats()->set_bufferoverruncount(globals_get1ui(statsCh1Audio, bufferOverrunCount));
     protoCh1->mutable_audiostats()->set_bufferunderruncount(globals_get1ui(statsCh1Audio, bufferUnderrunCount));
     protoCh1->mutable_audiostats()->set_codecerrorcount(globals_get1ui(statsCh1Audio, codecErrorCount));
@@ -83,11 +98,13 @@ static void *statsLoop (UNUSED void *arg) {
   }
 
   delete[] protoAudioChannels;
+  delete[] protoEndpoints;
   return NULL;
 }
 
 int monitor_init () {
   audioChannelCount = globals_get1i(audio, channelCount);
+  endpointCount = globals_get1i(endpoints, endpointCount);
 
   pthread_t wsThread, statsThread;
   int err = pthread_create(&wsThread, NULL, startWsApp, NULL);

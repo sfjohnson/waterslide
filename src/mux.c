@@ -18,6 +18,7 @@ int mux_init () {
 
 int mux_initTransfer (mux_transfer_t *transfer) {
   transfer->flags = 0x00;
+  transfer->seq = 0;
   transfer->chCount = 0;
   transfer->channels = (mux_channel_t*)malloc(sizeof(mux_channel_t) * maxChannels);
   if (transfer->channels == NULL) return -1;
@@ -56,6 +57,7 @@ int mux_emitPackets (mux_transfer_t *transfer, int (*onPacket)(const uint8_t *, 
     int pos = 0;
     int len = 0;
     packetBuf[pos++] = transfer->flags;
+    pos += utils_writeU16LE(&packetBuf[pos], transfer->seq++);
 
     for (int i = 0; i < transfer->chCount; i++) {
       mux_channel_t *ch = &transfer->channels[i];

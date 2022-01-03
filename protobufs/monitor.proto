@@ -16,15 +16,20 @@ message MonitorProto {
     uint32 codecErrorCount = 5;
   }
 
+  message EndpointStats {
+    string interfaceName = 1;
+    int32 lastRelativeSbn = 2;
+    uint32 dupPacketCount = 3;
+    uint32 oooPacketCount = 4;
+  }
+
   message MuxChannelStats {
     uint32 dupBlockCount = 1;
     uint32 oooBlockCount = 2;
-    int32 lastBlockSbnDiff = 3;
-    uint32 dupPacketCount = 4;
-    uint32 oooPacketCount = 5;
+    repeated EndpointStats endpoint = 3;
 
     oneof specificStats {
-      AudioStats audioStats = 6;
+      AudioStats audioStats = 4;
     }
   }
 
