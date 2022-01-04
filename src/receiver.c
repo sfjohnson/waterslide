@@ -72,7 +72,7 @@ static int decodeOpusPacket (const uint8_t *buf, int len) {
       }
     }
     // DEBUG: log
-    printf("reset\n");
+    // printf("reset\n");
   }
 
   globals_set1ui(statsCh1Audio, streamBufferPos, decodeRingSize);

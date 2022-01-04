@@ -20,7 +20,7 @@
     <div class="stats-container">
       <div class="entry">
         <div class="label">clipping (total):</div>
-        <div class="value">{data.audioChannel.reduce((prev, current) => prev + current.clippingCount, 0)}</div>
+        <div class="value">{data.audioChannel && data.audioChannel.reduce((prev, current) => prev + current.clippingCount, 0)}</div>
       </div>
       <div class="entry">
         <div class="label">buffer overruns:</div>

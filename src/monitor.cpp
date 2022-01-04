@@ -82,7 +82,10 @@ static void *statsLoop (UNUSED void *arg) {
     protoCh1->set_oooblockcount(globals_get1ui(statsCh1, oooBlockCount));
     int lastSbn0 = globals_get1iv(statsCh1Endpoints, lastSbn, 0);
     for (int i = 0; i < endpointCount; i++) {
-      protoEndpoints[i]->set_lastrelativesbn(globals_get1iv(statsCh1Endpoints, lastSbn, i) - lastSbn0);
+      int relSbn = globals_get1iv(statsCh1Endpoints, lastSbn, i) - lastSbn0;
+      if (relSbn > 127) relSbn -= 256;
+      if (relSbn < -128) relSbn += 256;
+      protoEndpoints[i]->set_lastrelativesbn(relSbn);
       protoEndpoints[i]->set_duppacketcount(globals_get1uiv(statsCh1Endpoints, dupPacketCount, i));
       protoEndpoints[i]->set_ooopacketcount(globals_get1uiv(statsCh1Endpoints, oooPacketCount, i));
     }
