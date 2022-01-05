@@ -23,6 +23,7 @@ static void *recvLoop (void *arg) {
   intptr_t epIndex = (intptr_t)arg;
 
   while (recvLoopRunning) {
+    // Accepts packets from any source address
     ssize_t recvLen = recv(sockets[epIndex], recvBuf, sizeof(recvBuf), 0);
     if (recvLen < 0) continue;
 

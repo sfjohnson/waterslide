@@ -24,59 +24,29 @@ static int opusMaxPacketSize, opusFrameSize, decodeRingLength;
 static int16_t *opusDecodedBuf;
 static uint8_t *opusEncodedBuf;
 
-// static int playCallback (const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void *userData) {
-//   int16_t *outBuf = (int16_t *)outputBuffer;
-//   for (int i = 0; i < framesPerBuffer; i++) {
-//     intptr_t outFrame = 0;
-//     if (!ck_ring_dequeue_spsc(&decodeRing, decodeRingBuf, &outFrame)) {
-//       stats_ch1.ringUnderrunCount++;
-//     }
+static void decodeOpusPacket (const uint8_t *buf, int len) {
+  static bool overrun = false;
 
-//     // DEBUG: max 2 channels for 32-bit arch, max 4 channels for 64-bit
-//     memcpy(&outBuf[AUDIO_CHANNEL_COUNT * i], &outFrame, 2 * AUDIO_CHANNEL_COUNT);
-//   }
+  int ringCurrentSize = ck_ring_size(&decodeRing);
+  globals_set1ui(statsCh1Audio, streamBufferPos, ringCurrentSize);
 
-//   return paContinue;
-// }
-
-static int decodeOpusPacket (const uint8_t *buf, int len) {
   int result = opus_decode(decoder, buf, len, opusDecodedBuf, opusFrameSize, 0);
   if (result != opusFrameSize) {
-    memset(opusDecodedBuf, 0, 2 * audioChannelCount * opusFrameSize);
     globals_add1ui(statsCh1Audio, codecErrorCount, 1);
-    return -1;
+    return;
+  }
+
+  if (overrun) {
+    // Let the audio callback empty the ring to about half-way before pushing to it again.
+    if (ringCurrentSize > decodeRingLength / 2) {
+      return;
+    } else {
+      overrun = false;
+    }
   }
 
   result = audio_enqueueBuf(opusDecodedBuf, opusFrameSize);
-  if (result < 0) {
-    memset(opusDecodedBuf, 0, 2 * audioChannelCount * opusFrameSize);
-    return result - 1;
-  }
-
-  int decodeRingSize = ck_ring_size(&decodeRing);
-  int redZoneLow = decodeRingLength / 8;
-  int redZoneHigh = decodeRingLength - redZoneLow;
-
-  if (decodeRingSize < redZoneLow || decodeRingSize > redZoneHigh) {
-    // Reset decode ring to half-way (causes audio glitch)
-    int ringSizeDiff = decodeRingSize - decodeRingLength/2;
-    if (ringSizeDiff < 0) {
-      for (int i = 0; i < -ringSizeDiff; i++) {
-        intptr_t zero = 0;
-        ck_ring_enqueue_spsc(&decodeRing, decodeRingBuf, (void*)zero);
-      }
-    } else if (ringSizeDiff > 0) {
-      for (int i = 0; i < ringSizeDiff; i++) {
-        intptr_t nothing;
-        ck_ring_dequeue_spsc(&decodeRing, decodeRingBuf, &nothing);
-      }
-    }
-    // DEBUG: log
-    // printf("reset\n");
-  }
-
-  globals_set1ui(statsCh1Audio, streamBufferPos, decodeRingSize);
-  return 0;
+  if (result == -2) overrun = true;
 }
 
 // The channel lock in the demux module protects the static variables accessed here

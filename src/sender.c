@@ -36,6 +36,7 @@ static int recordCallback (const void *inputBuffer, UNUSED void *outputBuffer, u
   int result = syncer_enqueueBuf(inputBuffer, framesPerBuffer, &encodeRing, encodeRingBuf);
   if (result < 0) return paContinue;
 
+  // DEBUG: the time xsem_post takes varies a lot and it probably isn't good to have it here in the audio callback.
   if ((int)ck_ring_size(&encodeRing) >= opusFrameSize) xsem_post(&encodeSem);
 
   return paContinue;

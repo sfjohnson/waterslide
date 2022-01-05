@@ -119,7 +119,8 @@ int config_init (const char *b64ConfigStr) {
       // IPv6
       printf("Init config: IPv6 is not implemented!\n");
       return -3;
-    } else {
+    } else if (initConfig.mode() == 0) {
+      // If we are a sender, an address is required.
       printf("Init config: Invalid endpoint addr length!\n");
       return -4;
     }

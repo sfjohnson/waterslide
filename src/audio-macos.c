@@ -12,10 +12,27 @@ static int audioChannelCount;
 
 static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, UNUSED const PaStreamCallbackTimeInfo* timeInfo, UNUSED PaStreamCallbackFlags statusFlags, UNUSED void *userData) {
   int16_t *outBuf = (int16_t *)outputBuffer;
+  static bool underrun = false;
+
+  if (underrun) {
+    // Let the ring fill up to about half-way before pulling from it again, while outputting silence.
+    int ringCurrentSize = ck_ring_size(_ring);
+    int ringTotalLength = globals_get1i(opus, decodeRingLength);
+    if (ringCurrentSize < ringTotalLength / 2) {
+      memset(outBuf, 0, 2 * audioChannelCount * framesPerBuffer);
+      return paContinue;
+    } else {
+      underrun = false;
+    }
+  }
+
   for (unsigned long i = 0; i < framesPerBuffer; i++) {
     intptr_t outFrame = 0;
     if (!ck_ring_dequeue_spsc(_ring, _ringBuf, &outFrame)) {
+      underrun = true;
       globals_add1ui(statsCh1Audio, bufferUnderrunCount, 1);
+      memset(outBuf, 0, 2 * audioChannelCount * framesPerBuffer);
+      return paContinue;
     }
 
     // DEBUG: max 2 channels for 32-bit arch, max 4 channels for 64-bit

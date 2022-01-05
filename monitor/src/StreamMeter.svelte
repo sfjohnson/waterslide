@@ -36,8 +36,6 @@
     }
   })
 
-  $: redZoneHeight = activeMeterHeight / levelDiv
-
   $: posMarkerTop = activeMeterHeight * (1 - data.streamBufferPos/(bufferSize-1)) + endMarkerHeight
 </script>
 
@@ -53,9 +51,7 @@
 
   <div class="meter-bar">
     <div class="{markers[1].active ? "active-marker marker" : "marker"}"></div>
-    <div class="red-zone" style="height: {redZoneHeight}px;"></div>
     <div class="fill"></div>
-    <div class="red-zone" style="height: {redZoneHeight}px;"></div>
     <div class="pos-marker" style="top: {posMarkerTop}px;"></div>
     <div class="{markers[0].active ? "active-marker marker" : "marker"}"></div>
   </div>
@@ -90,11 +86,6 @@
 
   .fill {
     flex: 1;
-  }
-
-  .red-zone {
-    width: 10px;
-    background-color: rgb(145, 59, 59);
   }
 
   .pos-marker {
