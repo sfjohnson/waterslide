@@ -73,17 +73,9 @@ int utils_writeU16LE (uint8_t *buf, uint16_t val) {
   return 2;
 }
 
-int utils_seqDiffU16 (uint16_t a, uint16_t b) {
-  int seqDiff = (int)a - (int)b;
-  // DEBUG: why 60000?
-  if (seqDiff > 60000) {
-    // Overflow, a behind
-    seqDiff -= 65536; // This is now negative
-  } else if (seqDiff < -60000) {
-    // Overflow, a ahead
-    seqDiff += 65536; // This is now positive
-  }
-  return seqDiff;
+// NOTE: this function is undefined for x = 0 or x = 1
+int utils_roundUpPowerOfTwo (unsigned int x) {
+  return 1 << (1 + __builtin_clz(1) - __builtin_clz(x-1));
 }
 
 // Poly: 0x04C11DB7

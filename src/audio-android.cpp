@@ -8,40 +8,70 @@
 
 static ck_ring_t *_ring;
 static ck_ring_buffer_t *_ringBuf;
+static int _fullRingSize;
 static std::shared_ptr<oboe::AudioStream> stream = nullptr;
-static int audioChannelCount;
+static int networkChannelCount, deviceChannelCount, ringMaxSize;
 
 class : public oboe::AudioStreamDataCallback {
 public:
   oboe::DataCallbackResult onAudioReady (UNUSED oboe::AudioStream *audioStream, void *audioData, int32_t numFrames) {
-    // We requested AudioFormat::I16. So if the stream opens
-    // we know we got the I16 format.
-    int16_t *outBuf = static_cast<int16_t *>(audioData);
+    // We requested AudioFormat::Float. So if the stream opens
+    // we know we got the Float format.
+    float *outBuf = static_cast<float *>(audioData);
+    static bool underrun = false;
+    int ringCurrentSize = ck_ring_size(_ring);
+    int outBufFloatCount = deviceChannelCount * numFrames;
+    int ringFloatCount = networkChannelCount * numFrames;
+
+    memset(outBuf, 0, 4 * outBufFloatCount);
+
+    if (underrun) {
+      // Let the ring fill up to about half-way before pulling from it again, while outputting silence.
+      if (ringCurrentSize < ringMaxSize / 2) {
+        return oboe::DataCallbackResult::Continue;
+      } else {
+        underrun = false;
+      }
+    }
+
+    if (ringCurrentSize < ringFloatCount) {
+      underrun = true;
+      globals_add1ui(statsCh1Audio, bufferUnderrunCount, 1);
+      return oboe::DataCallbackResult::Continue;
+    }
 
     for (int i = 0; i < numFrames; i++) {
-      intptr_t outFrame = 0;
-      if (!ck_ring_dequeue_spsc(_ring, _ringBuf, &outFrame)) {
-        globals_add1ui(statsCh1Audio, bufferUnderrunCount, 1);
+      for (int j = 0; j < networkChannelCount; j++) {
+        // If networkChannelCount > deviceChannelCount, dequeue the sample then discard it.
+        // If networkChannelCount < deviceChannelCount, don't write to the remaining channels in outBuf,
+        // they are already set to zero above.
+        intptr_t outSample = 0;
+        ck_ring_dequeue_spsc(_ring, _ringBuf, &outSample);
+        if (j < deviceChannelCount) {
+          // https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#how-do-we-type-pun-correctly
+          memcpy(&outBuf[deviceChannelCount*i + j], &outSample, 4);
+        }
       }
-
-      // DEBUG: max 2 channels for 32-bit arch, max 4 channels for 64-bit
-      memcpy(&outBuf[audioChannelCount * i], &outFrame, 2 * audioChannelCount);
     }
 
     return oboe::DataCallbackResult::Continue;
   }
 } audioCallback;
 
-int audio_init (ck_ring_t *ring, ck_ring_buffer_t *ringBuf) {
+int audio_init (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize) {
   _ring = ring;
   _ringBuf = ringBuf;
-  audioChannelCount = globals_get1i(audio, channelCount);
+  _fullRingSize = fullRingSize;
+  networkChannelCount = globals_get1i(audio, networkChannelCount);
+  ringMaxSize = networkChannelCount * globals_get1i(opus, decodeRingLength);
+  // NOTE: No multi-channel support on Android, deviceChannelCount global var is ignored.
+  deviceChannelCount = 2;
 
   oboe::AudioStreamBuilder builder;
   builder.setDirection(oboe::Direction::Output);
   builder.setPerformanceMode(oboe::PerformanceMode::LowLatency);
   builder.setSharingMode(oboe::SharingMode::Exclusive);
-  builder.setFormat(oboe::AudioFormat::I16);
+  builder.setFormat(oboe::AudioFormat::Float);
   builder.setChannelCount(oboe::ChannelCount::Stereo);
   builder.setDataCallback(&audioCallback);
 
@@ -56,17 +86,23 @@ int audio_init (ck_ring_t *ring, ck_ring_buffer_t *ringBuf) {
 }
 
 int audio_start (UNUSED const char *audioDeviceName) {
-  // audioDeviceName is ignored for now, Oboe uses the default device.
+  // NOTE: audioDeviceName is ignored for now, Oboe uses the default device.
   if (stream == nullptr) return -1;
 
-  printf("Sample rate: %d\n", stream->getSampleRate());
-  syncer_init((double)globals_get1i(opus, sampleRate), (double)stream->getSampleRate(), globals_get1i(opus, frameSize));
+  int32_t ioSampleRate = stream->getSampleRate();
+  globals_set1i(audio, ioSampleRate, ioSampleRate);
+  printf("Sample rate: %d\n", ioSampleRate);
+  int err = syncer_init((double)globals_get1i(opus, sampleRate), (double)ioSampleRate, globals_get1i(opus, frameSize), _ring, _ringBuf, _fullRingSize);
+  if (err < 0) {
+    printf("syncer_init error: %d\n", err);
+    return -2;
+  }
 
   stream->requestStart();
   // stream->close();
   return 0;
 }
 
-int audio_enqueueBuf (const int16_t *inBuf, int inFrameCount) {
-  return syncer_enqueueBuf(inBuf, inFrameCount, _ring, _ringBuf);
+int audio_enqueueBuf (const float *inBuf, int inFrameCount, int inChannelCount) {
+  return syncer_enqueueBuf(inBuf, inFrameCount, inChannelCount);
 }

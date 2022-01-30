@@ -106,7 +106,7 @@ static void *statsLoop (UNUSED void *arg) {
 }
 
 int monitor_init () {
-  audioChannelCount = globals_get1i(audio, channelCount);
+  audioChannelCount = globals_get1i(audio, networkChannelCount);
   endpointCount = globals_get1i(endpoints, endpointCount);
 
   pthread_t wsThread, statsThread;

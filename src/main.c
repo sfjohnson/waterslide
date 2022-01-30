@@ -11,15 +11,15 @@ int main (int argc, char *argv[]) {
   // Disable full buffering when executed outside of a terminal (e.g. NodeJS spawn)
   setbuf(stdout, NULL);
 
-  printf("Waterslide, build 30\n");
+  printf("Waterslide, build 46\n");
 
   if (argc < 2) {
     printf("First argument must be base64 encoded init config.\n");
     return EXIT_FAILURE;
   }
 
-  if (sizeof(double) != 8 || sizeof(float) != 4) {
-    printf("Arch check failed: double and float are not the expected size.\n");
+  if (sizeof(double) != 8 || sizeof(float) != 4 || sizeof(intptr_t) < 4) {
+    printf("Arch check failed: expected 64 bit double, 32 bit float and at least 32 bit pointers.\n");
     return EXIT_FAILURE;
   }
 

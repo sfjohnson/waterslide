@@ -8,44 +8,55 @@
 
 static ck_ring_t *_ring;
 static ck_ring_buffer_t *_ringBuf;
-static int audioChannelCount;
+static int _fullRingSize;
+static int networkChannelCount, deviceChannelCount, ringMaxSize;
 
 static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, UNUSED const PaStreamCallbackTimeInfo* timeInfo, UNUSED PaStreamCallbackFlags statusFlags, UNUSED void *userData) {
-  int16_t *outBuf = (int16_t *)outputBuffer;
   static bool underrun = false;
+  float *outBuf = (float *)outputBuffer;
+  int ringCurrentSize = ck_ring_size(_ring);
+  // This condition is ensured in audio_start: outBufFloatCount >= ringFloatCount
+  int outBufFrameCount = (int)framesPerBuffer;
+  int outBufFloatCount = deviceChannelCount * outBufFrameCount;
+  int ringFloatCount = networkChannelCount * outBufFrameCount;
+
+  memset(outBuf, 0, 4 * outBufFloatCount);
 
   if (underrun) {
     // Let the ring fill up to about half-way before pulling from it again, while outputting silence.
-    int ringCurrentSize = ck_ring_size(_ring);
-    int ringTotalLength = globals_get1i(opus, decodeRingLength);
-    if (ringCurrentSize < ringTotalLength / 2) {
-      memset(outBuf, 0, 2 * audioChannelCount * framesPerBuffer);
+    if (ringCurrentSize < ringMaxSize / 2) {
       return paContinue;
     } else {
       underrun = false;
     }
   }
 
-  for (unsigned long i = 0; i < framesPerBuffer; i++) {
-    intptr_t outFrame = 0;
-    if (!ck_ring_dequeue_spsc(_ring, _ringBuf, &outFrame)) {
-      underrun = true;
-      globals_add1ui(statsCh1Audio, bufferUnderrunCount, 1);
-      memset(outBuf, 0, 2 * audioChannelCount * framesPerBuffer);
-      return paContinue;
-    }
+  if (ringCurrentSize < ringFloatCount) {
+    underrun = true;
+    globals_add1ui(statsCh1Audio, bufferUnderrunCount, 1);
+    return paContinue;
+  }
 
-    // DEBUG: max 2 channels for 32-bit arch, max 4 channels for 64-bit
-    memcpy(&outBuf[audioChannelCount * i], &outFrame, 2 * audioChannelCount);
+  for (int i = 0; i < outBufFrameCount; i++) {
+    for (int j = 0; j < networkChannelCount; j++) {
+      // If networkChannelCount < deviceChannelCount, don't write to the remaining channels in outBuf,
+      // they are already set to zero above.
+      intptr_t outSample = 0;
+      ck_ring_dequeue_spsc(_ring, _ringBuf, &outSample);
+      // https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#how-do-we-type-pun-correctly
+      memcpy(&outBuf[deviceChannelCount*i + j], &outSample, 4);
+    }
   }
 
   return paContinue;
 }
 
-int audio_init (ck_ring_t *ring, ck_ring_buffer_t *ringBuf) {
+int audio_init (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize) {
   _ring = ring;
   _ringBuf = ringBuf;
-  audioChannelCount = globals_get1i(audio, channelCount);
+  _fullRingSize = fullRingSize;
+  networkChannelCount = globals_get1i(audio, networkChannelCount);
+  ringMaxSize = networkChannelCount * globals_get1i(opus, decodeRingLength);
 
   PaError pErr = Pa_Initialize();
   if (pErr != paNoError) {
@@ -93,9 +104,10 @@ int audio_start (const char *audioDeviceName) {
         printf("No output channels.\n");
         return -2;
       }
-      printf("Channels: %d\n", deviceInfo->maxOutputChannels);
-      if (deviceInfo->maxOutputChannels != audioChannelCount) {
-        printf("Device must %d channels.\n", audioChannelCount);
+      printf("Device channels: %d\n", deviceInfo->maxOutputChannels);
+      printf("Receiver channels: %d\n", networkChannelCount);
+      if (deviceInfo->maxOutputChannels < networkChannelCount) {
+        printf("Device does not have enough output channels.\n");
         return -3;
       }
       break;
@@ -107,25 +119,31 @@ int audio_start (const char *audioDeviceName) {
     return -4;
   }
 
+  deviceChannelCount = deviceInfo->maxOutputChannels;
+  globals_set1i(audio, deviceChannelCount, deviceChannelCount);
+
   PaStream *stream;
-  const PaStreamInfo *streamInfo;
   PaStreamParameters params = { 0 };
   params.device = deviceIndex;
   params.channelCount = deviceInfo->maxOutputChannels;
-  params.sampleFormat = paInt16;
+  params.sampleFormat = paFloat32;
   params.suggestedLatency = deviceInfo->defaultLowOutputLatency;
-  double ioSampleRate = globals_get1i(audio, ioSampleRate);
-  PaError pErr = Pa_OpenStream(&stream, NULL, &params, ioSampleRate, opusFrameSize, 0, playCallback, NULL);
+  PaError pErr = Pa_OpenStream(&stream, NULL, &params, globals_get1i(audio, ioSampleRate), opusFrameSize, 0, playCallback, NULL);
   if (pErr != paNoError) {
     printf("Pa_OpenStream error: %d, %s\n", pErr, Pa_GetErrorText(pErr));
     return -5;
   }
 
-  streamInfo = Pa_GetStreamInfo(stream);
-  printf("Latency (ms): %f\n", 1000.0 * streamInfo->outputLatency);
-  printf("Sample rate: %f\n", streamInfo->sampleRate);
+  const PaStreamInfo *streamInfo = Pa_GetStreamInfo(stream);
+  double deviceLatency = streamInfo->outputLatency; // seconds
+  double deviceSampleRate = streamInfo->sampleRate; // Hz
+  double opusSampleRate = globals_get1i(opus, sampleRate); // Hz
+  // Set the ioSampleRate global in case PortAudio gave a different sample rate to the one requested.
+  globals_set1i(audio, ioSampleRate, (int)deviceSampleRate);
+  printf("Device latency (ms): %f\n", 1000.0 * deviceLatency);
+  printf("Sample rate: %f\n", deviceSampleRate);
 
-  int err = syncer_init((double)globals_get1i(opus, sampleRate), streamInfo->sampleRate, opusFrameSize);
+  int err = syncer_init(opusSampleRate, deviceSampleRate, opusFrameSize, _ring, _ringBuf, _fullRingSize);
   if (err < 0) {
     printf("syncer_init error: %d\n", err);
     return -6;
@@ -140,6 +158,6 @@ int audio_start (const char *audioDeviceName) {
   return 0;
 }
 
-int audio_enqueueBuf (const int16_t *inBuf, int inFrameCount) {
-  return syncer_enqueueBuf(inBuf, inFrameCount, _ring, _ringBuf);
+int audio_enqueueBuf (const float *inBuf, int inFrameCount, int inChannelCount) {
+  return syncer_enqueueBuf(inBuf, inFrameCount, inChannelCount);
 }

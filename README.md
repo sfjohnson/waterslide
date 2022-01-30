@@ -1,25 +1,31 @@
 # waterslide
 
-Realtime data transport with multihoming
+Realtime data transport with multihoming.
 
-## Notes
+## Features (implemented and to-do)
 
-This project is in the proof-of-concept stage and doesn't work very well yet. List of implemented and to-do features:
-
+- [x] Simplex (one-way) protocol (excluding NAT traversal)
 - [x] High bitrate Opus compressed audio transport
 - [x] Forward error correction (no waiting for packet re-transmissions)
 - [x] Works over the internet and on a LAN
 - [x] Multihoming
 - [ ] Lossless audio
-- [ ] Support for over 4 audio channels
+- [x] Multi-channel audio
 - [ ] Resampling to correct for clock drift between sender and receiver
 - [ ] Encryption
 - [ ] Network discovery
 
-Platforms:
+## Anti-features
+
+- Lowering the bitrate for a long time when a short spike of packet loss or latency is detected
+- Processing the audio to improve speech legibility
+- Warping the received audio to allow "catch up" after significant packet loss
+
+## Platforms
 
 - [x] macOS x64
-- [x] Android
+- [x] Android (receiver)
+- [ ] Android (sender)
 - [ ] macOS ARM
 - [ ] Raspberry Pi
 

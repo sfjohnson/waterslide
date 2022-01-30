@@ -5,34 +5,41 @@
 
 using namespace r8b;
 
-static CDSPResampler16 **resamps;
-static double *inBufDouble;
-static int audioChannelCount;
+static ck_ring_t *_ring;
+static ck_ring_buffer_t *_ringBuf;
+static int _fullRingSize;
+static CDSPResampler24 **resamps;
+static int networkChannelCount, deviceChannelCount;
 static double levelFastAttack, levelFastRelease;
 static double levelSlowAttack, levelSlowRelease;
 
-static int16_t *frameBuf;
+static float *frameBuf;
+static double **inBufsDouble;
 static double **outBufsDouble;
-static int *outBufsDoubleLen;
 
-int syncer_init (double srcRate, double dstRate, int maxInBufLen) {
+int syncer_init (double srcRate, double dstRate, int maxInBufFrames, ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize) {
   try {
-    audioChannelCount = globals_get1i(audio, channelCount);
+    _ring = ring;
+    _ringBuf = ringBuf;
+    _fullRingSize = fullRingSize;
+
+    networkChannelCount = globals_get1i(audio, networkChannelCount);
+    deviceChannelCount = globals_get1i(audio, deviceChannelCount);
     globals_get1ff(audio, levelFastAttack, &levelFastAttack);
     globals_get1ff(audio, levelFastRelease, &levelFastRelease);
     globals_get1ff(audio, levelSlowAttack, &levelSlowAttack);
     globals_get1ff(audio, levelSlowRelease, &levelSlowRelease);
 
-    resamps = new CDSPResampler16*[audioChannelCount];
-    for (int i = 0; i < audioChannelCount; i++) {
-      resamps[i] = new CDSPResampler16(srcRate, dstRate, maxInBufLen, 4.0);
+    frameBuf = new float[networkChannelCount];
+    resamps = new CDSPResampler24*[networkChannelCount];
+    inBufsDouble = new double*[networkChannelCount];
+    outBufsDouble = new double*[networkChannelCount];
+
+    for (int i = 0; i < networkChannelCount; i++) {
+      resamps[i] = new CDSPResampler24(srcRate, dstRate, maxInBufFrames);
+      inBufsDouble[i] = new double[maxInBufFrames];
     }
 
-    inBufDouble = new double[maxInBufLen];
-
-    frameBuf = new int16_t[audioChannelCount];
-    outBufsDouble = new double*[audioChannelCount];
-    outBufsDoubleLen = new int[audioChannelCount];
   } catch (...) {
     return -1;
   }
@@ -40,8 +47,8 @@ int syncer_init (double srcRate, double dstRate, int maxInBufLen) {
   return 0;
 }
 
-static void setAudioStats (double dSample, int iSample, int channel) {
-  if (iSample > 32767 || iSample < -32768) {
+static void setAudioStats (double sample, int channel) {
+  if (sample >= 1.0 || sample <= -1.0) {
     globals_add1uiv(statsCh1Audio, clippingCounts, channel, 1);
   }
 
@@ -49,8 +56,8 @@ static void setAudioStats (double dSample, int iSample, int channel) {
   globals_get1ffv(statsCh1Audio, levelsFast, channel, &levelFast);
   globals_get1ffv(statsCh1Audio, levelsSlow, channel, &levelSlow);
 
-  double levelFastDiff = fabs(dSample) - levelFast;
-  double levelSlowDiff = fabs(dSample) - levelSlow;
+  double levelFastDiff = fabs(sample) - levelFast;
+  double levelSlowDiff = fabs(sample) - levelSlow;
 
   if (levelFastDiff > 0) {
     levelFast += levelFastAttack * levelFastDiff;
@@ -67,53 +74,38 @@ static void setAudioStats (double dSample, int iSample, int channel) {
   globals_set1ffv(statsCh1Audio, levelsSlow, channel, levelSlow);
 }
 
-int syncer_enqueueBuf (const int16_t *inBuf, int inFrameCount, ck_ring_t *ring, ck_ring_buffer_t *ringBuf) {
-  for (int i = 0; i < audioChannelCount; i++) {
+// NOTE: this is not thread-safe
+int syncer_enqueueBuf (const float *inBuf, int inFrameCount, int inChannelCount) {
+  int lastOutBufLen = -1;
+  for (int i = 0; i < networkChannelCount; i++) {
     for (int j = 0; j < inFrameCount; j++) {
-      // http://blog.bjornroche.com/2009/12/int-float-int-its-jungle-out-there.html
-      inBufDouble[j] = (double)inBuf[audioChannelCount*j + i] / 32768.0;
+      // If the inBuf has more channels than we want to send over the network, use the first n channels of the inBuf.
+      inBufsDouble[i][j] = inBuf[inChannelCount*j + i];
     }
-    outBufsDoubleLen[i] = resamps[i]->process(inBufDouble, inFrameCount, outBufsDouble[i]);
-  }
-
-  // DEBUG: what do we do if outBufsDoubleLen aren't all the same?
-  for (int i = 1; i < audioChannelCount; i++) {
-    if (outBufsDoubleLen[i] != outBufsDoubleLen[0]) {
-      // DEBUG: log
-      printf("syncer: resampler desync\n");
+    int outBufLen = resamps[i]->process(inBufsDouble[i], inFrameCount, outBufsDouble[i]);
+    if (lastOutBufLen != -1 && outBufLen != lastOutBufLen) {
+      // DEBUG: outBufLens were not all the same. What should we do? This never happens!
+      printf("syncer: resampler desync!\n");
       return -1;
     }
+    lastOutBufLen = outBufLen;
   }
 
-  for (int i = 0; i < outBufsDoubleLen[0]; i++) {
-    intptr_t outFrame = 0;
+  if ((int)ck_ring_size(_ring) + networkChannelCount*lastOutBufLen > _fullRingSize) {
+    globals_add1ui(statsCh1Audio, bufferOverrunCount, 1);
+    return -2;
+  }
 
-    for (int j = 0; j < audioChannelCount; j++) {
-      int intSample = 32767.0 * outBufsDouble[j][i];
-      // setAudioStats will detect 16-bit overflow (clipping) and tell the user
-      setAudioStats(outBufsDouble[j][i], intSample, j);
-      // Now clip to make sure the sample doesn't wrap around when converted to int16_t
-      if (intSample > 32767) {
-        intSample = 32767;
-      } else if (intSample < -32768) {
-        intSample = -32768;
-      }
+  for (int i = 0; i < lastOutBufLen; i++) {
+    for (int j = 0; j < networkChannelCount; j++) {
+      // setAudioStats will detect clipping and tell the user
+      setAudioStats(outBufsDouble[j][i], j);
 
-      // DEBUG
-      // if (i > outBufsDoubleLen[0] - 10) {
-      //   intSample = 0x7fff;
-      // }
-
-      frameBuf[j] = (int16_t)intSample;
-    }
-
-    // https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#how-do-we-type-pun-correctly
-    // DEBUG: max 2 channels for 32-bit arch, max 4 channels for 64-bit
-    memcpy(&outFrame, frameBuf, 2 * audioChannelCount);
-
-    if (!ck_ring_enqueue_spsc(ring, ringBuf, (void*)outFrame)) {
-      globals_add1ui(statsCh1Audio, bufferOverrunCount, 1);
-      return -2;
+      // https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#how-do-we-type-pun-correctly
+      intptr_t outSample = 0;
+      float floatSample = outBufsDouble[j][i];
+      memcpy(&outSample, &floatSample, 4);
+      ck_ring_enqueue_spsc(_ring, _ringBuf, (void*)outSample);
     }
   }
 
@@ -121,14 +113,12 @@ int syncer_enqueueBuf (const int16_t *inBuf, int inFrameCount, ck_ring_t *ring, 
 }
 
 void syncer_deinit () {
-  for (int i = 0; i < audioChannelCount; i++) {
+  for (int i = 0; i < networkChannelCount; i++) {
     delete resamps[i];
+    delete[] inBufsDouble[i];
   }
 
   delete[] resamps;
-  delete[] inBufDouble;
-
   delete[] frameBuf;
   delete[] outBufsDouble;
-  delete[] outBufsDoubleLen;
 }

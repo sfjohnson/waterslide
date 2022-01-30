@@ -3,34 +3,32 @@
 #include <string.h>
 #include <stdatomic.h>
 #include "receiver.h"
-#include "opus/opus.h"
+#include "opus/opus_multistream.h"
 #include "ck/ck_ring.h"
 #include "globals.h"
 #include "demux.h"
 #include "endpoint.h"
 #include "audio.h"
+#include "utils.h"
 
-// #define REMOTE_ADDR 0x6401a8c0 // 192.168.1.100
-// #define REMOTE_ADDR 0xdb1fc923 // 35.201.31.219
-
-static OpusDecoder *decoder;
+static OpusMSDecoder *decoder;
 static demux_channel_t channel1 = { 0 };
 static ck_ring_t decodeRing;
 static ck_ring_buffer_t *decodeRingBuf;
 static int sbnLast = -1;
 
-static int audioChannelCount;
-static int opusMaxPacketSize, opusFrameSize, decodeRingLength;
-static int16_t *opusDecodedBuf;
+static int networkChannelCount;
+static int opusMaxPacketSize, opusFrameSize, decodeRingMaxSize;
+static float *opusDecodedBuf;
 static uint8_t *opusEncodedBuf;
 
 static void decodeOpusPacket (const uint8_t *buf, int len) {
   static bool overrun = false;
 
   int ringCurrentSize = ck_ring_size(&decodeRing);
-  globals_set1ui(statsCh1Audio, streamBufferPos, ringCurrentSize);
+  globals_set1ui(statsCh1Audio, streamBufferPos, ringCurrentSize / networkChannelCount);
 
-  int result = opus_decode(decoder, buf, len, opusDecodedBuf, opusFrameSize, 0);
+  int result = opus_multistream_decode_float(decoder, buf, len, opusDecodedBuf, opusFrameSize, 0);
   if (result != opusFrameSize) {
     globals_add1ui(statsCh1Audio, codecErrorCount, 1);
     return;
@@ -38,14 +36,14 @@ static void decodeOpusPacket (const uint8_t *buf, int len) {
 
   if (overrun) {
     // Let the audio callback empty the ring to about half-way before pushing to it again.
-    if (ringCurrentSize > decodeRingLength / 2) {
+    if (ringCurrentSize > decodeRingMaxSize / 2) {
       return;
     } else {
       overrun = false;
     }
   }
 
-  result = audio_enqueueBuf(opusDecodedBuf, opusFrameSize);
+  result = audio_enqueueBuf(opusDecodedBuf, opusFrameSize, networkChannelCount);
   if (result == -2) overrun = true;
 }
 
@@ -108,16 +106,19 @@ static int onBlockCh1 (const uint8_t *buf, int sbn) {
 int receiver_init () {
   opusMaxPacketSize = globals_get1i(opus, maxPacketSize);
   opusFrameSize = globals_get1i(opus, frameSize);
-  audioChannelCount = globals_get1i(audio, channelCount);
-  decodeRingLength = globals_get1i(opus, decodeRingLength);
+  networkChannelCount = globals_get1i(audio, networkChannelCount);
+  decodeRingMaxSize = networkChannelCount * globals_get1i(opus, decodeRingLength);
+  // ck requires the size to be a power of two but we will pretend decodeRing contains
+  // decodeRingMaxSize number of float values, and ignore the rest.
+  int decodeRingAllocSize = utils_roundUpPowerOfTwo(decodeRingMaxSize);
 
-  opusDecodedBuf = (int16_t*)malloc(2 * audioChannelCount * opusFrameSize);
+  opusDecodedBuf = (float*)malloc(4 * networkChannelCount * opusFrameSize);
   if (opusDecodedBuf == NULL) return -1;
   opusEncodedBuf = (uint8_t *)malloc(opusMaxPacketSize);
   if (opusEncodedBuf == NULL) return -2;
-  decodeRingBuf = (ck_ring_buffer_t*)malloc(sizeof(ck_ring_buffer_t) * decodeRingLength);
+  decodeRingBuf = (ck_ring_buffer_t*)malloc(sizeof(ck_ring_buffer_t) * decodeRingAllocSize);
   if (decodeRingBuf == NULL) return -3;
-  memset(decodeRingBuf, 0, sizeof(ck_ring_buffer_t) * decodeRingLength);
+  memset(decodeRingBuf, 0, sizeof(ck_ring_buffer_t) * decodeRingAllocSize);
 
   if (demux_init() < 0) return -4;
 
@@ -127,28 +128,31 @@ int receiver_init () {
   channel1.onBlock = onBlockCh1;
   demux_addChannel(&channel1);
 
+  unsigned char mapping[networkChannelCount];
+  for (int i = 0; i < networkChannelCount; i++) mapping[i] = i;
+
   int err;
-  decoder = opus_decoder_create(globals_get1i(opus, sampleRate), audioChannelCount, &err);
+  decoder = opus_multistream_decoder_create(globals_get1i(opus, sampleRate), networkChannelCount, networkChannelCount, 0, mapping, &err);
   if (err < 0) {
-    printf("opus_decoder_create failed: %s\n", opus_strerror(err));
+    printf("opus_multistream_decoder_create failed: %s\n", opus_strerror(err));
     return -5;
   }
 
   // https://twitter.com/marcan42/status/1264844348933369858
-  err = opus_decoder_ctl(decoder, OPUS_SET_PHASE_INVERSION_DISABLED(1));
-  if (err < 0) {
-    printf("opus_decoder_ctl failed: %s\n", opus_strerror(err));
-    return -6;
-  }
+  // err = opus_decoder_ctl(decoder, OPUS_SET_PHASE_INVERSION_DISABLED(1));
+  // if (err < 0) {
+  //   printf("opus_decoder_ctl failed: %s\n", opus_strerror(err));
+  //   return -6;
+  // }
 
-  ck_ring_init(&decodeRing, decodeRingLength);
+  ck_ring_init(&decodeRing, decodeRingAllocSize);
   // half-fill ring buffer
-  for (int i = 0; i < decodeRingLength / 2; i++) {
+  for (int i = 0; i < decodeRingMaxSize / 2; i++) {
     intptr_t inFrame = 0;
     ck_ring_enqueue_spsc(&decodeRing, decodeRingBuf, (void*)inFrame);
   }
 
-  if (audio_init(&decodeRing, decodeRingBuf) < 0) return -7;
+  if (audio_init(&decodeRing, decodeRingBuf, decodeRingMaxSize) < 0) return -7;
 
   char audioDeviceName[MAX_DEVICE_NAME_LEN + 1] = { 0 };
   globals_get1s(audio, deviceName, audioDeviceName, sizeof(audioDeviceName));

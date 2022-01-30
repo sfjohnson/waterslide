@@ -134,7 +134,7 @@ int config_init (const char *b64ConfigStr) {
   globals_set1i(mux, maxChannels, initConfig.mux().maxchannels());
   globals_set1i(mux, maxPacketSize, initConfig.mux().maxpacketsize());
 
-  globals_set1i(audio, channelCount, audioChannelCount);
+  globals_set1i(audio, networkChannelCount, audioChannelCount);
   globals_set1i(audio, ioSampleRate, initConfig.audio().iosamplerate());
   globals_set1s(audio, deviceName, initConfig.audio().devicename().c_str());
   globals_set1ff(audio, levelSlowAttack, initConfig.audio().levelslowattack());
@@ -146,7 +146,6 @@ int config_init (const char *b64ConfigStr) {
   globals_set1i(opus, frameSize, initConfig.opus().framesize());
   globals_set1i(opus, maxPacketSize, initConfig.opus().maxpacketsize());
   globals_set1i(opus, sampleRate, initConfig.opus().samplerate());
-  globals_set1i(opus, encodeRingLength, initConfig.opus().encoderinglength());
   globals_set1i(opus, decodeRingLength, initConfig.opus().decoderinglength());
 
   globals_set1i(fec, symbolLen, initConfig.fec().symbollen());
@@ -156,35 +155,4 @@ int config_init (const char *b64ConfigStr) {
   globals_set1i(monitor, wsPort, initConfig.monitor().wsport());
 
   return 0;
-
-  // printf("\nmux.maxChannels: %d\n", initConfig.mux().maxchannels());
-  // printf("mux.maxPacketSize: %d\n", initConfig.mux().maxpacketsize());
-
-  // printf("\naudio.channelCount: %d\n", initConfig.audio().channelcount());
-  // printf("audio.ioSampleRate: %d\n", initConfig.audio().iosamplerate());
-  // printf("audio.deviceName: %s\n", initConfig.audio().devicename().c_str());
-  // printf("audio.levelSlowAttack: %f\n", initConfig.audio().levelslowattack());
-  // printf("audio.levelSlowRelease: %f\n", initConfig.audio().levelslowrelease());
-  // printf("audio.levelFastAttack: %f\n", initConfig.audio().levelfastattack());
-  // printf("audio.levelFastRelease: %f\n", initConfig.audio().levelfastrelease());
-
-  // printf("\nopus.bitrate: %d\n", initConfig.opus().bitrate());
-  // printf("opus.frameSize: %d\n", initConfig.opus().framesize());
-  // printf("opus.maxPacketSize: %d\n", initConfig.opus().maxpacketsize());
-  // printf("opus.sampleRate: %d\n", initConfig.opus().samplerate());
-  // printf("opus.encodeRingLength: %d\n", initConfig.opus().encoderinglength());
-  // printf("opus.decodeRingLength: %d\n", initConfig.opus().decoderinglength());
-
-  // printf("\nfec.symbolLen: %d\n", initConfig.fec().symbollen());
-  // printf("fec.sourceSymbolsPerBlock: %d\n", initConfig.fec().sourcesymbolsperblock());
-  // printf("fec.repairSymbolsPerBlock: %d\n", initConfig.fec().repairsymbolsperblock());
-
-  // printf("\nmonitor.wsPort: %d\n", initConfig.monitor().wsport());
-
-  // int32_t channelCount2 = 0;
-  // globals_get1i(audio, channelCount, &channelCount2)
-  // printf("globals test 1: %d\n", channelCount2);
-  // char temp[100] = { 0 };
-  // globals_get1s(audio, deviceName, temp, sizeof(temp))
-  // printf("globals test 2: %s\n", temp);
 }

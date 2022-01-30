@@ -8,8 +8,11 @@ extern "C" {
 #include <stdint.h>
 #include "ck/ck_ring.h"
 
-int syncer_init (double srcRate, double dstRate, int maxInBufLen);
-int syncer_enqueueBuf (const int16_t *inBuf, int inFrameCount, ck_ring_t *ring, ck_ring_buffer_t *ringBuf);
+int syncer_init (double srcRate, double dstRate, int maxInBufFrames, ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize);
+
+// NOTE: this is not thread-safe
+int syncer_enqueueBuf (const float *inBuf, int inFrameCount, int inChannelCount);
+
 void syncer_deinit ();
 
 #ifdef __cplusplus
