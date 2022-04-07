@@ -6,7 +6,7 @@
   "bin": "out/main.js",
   "scripts": {
     "start": "npx tsc && node out/main.js",
-    "build": "npx tsc && pkg ."
+    "build": "tsc"
   },
   "author": "iroha.is",
   "license": "MPL-2.0",
@@ -14,11 +14,6 @@
     "protobufjs": "^6.11.2"
   },
   "devDependencies": {
-    "pkg": "^5.5.1",
     "typescript": "^4.5.2"
-  },
-  "pkg": {
-    "targets": [ "node16-linuxstatic-x64" ],
-    "outputPath": "dist"
   }
 }

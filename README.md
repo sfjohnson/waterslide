@@ -64,11 +64,31 @@ make -f android30.mk clean
 make -f macos10.mk
 ```
 
-## Build Android API 30 (Android 11)
+## Build Android (binary only)
+
+API 30 (Android 11)
 
 ```sh
 make -f macos10.mk clean
 make -f android30.mk
+```
+
+## Build Android (distributable tar)
+
+1.
+```sh
+./make-android-dist.sh
+```
+2. Copy `waterslide-android-dist.tar.bz2` to the Android device.
+3. Extract it to a folder the user can execute from e.g.
+```sh
+cd /data/local/tmp
+tar xf waterslide-android-dist.tar.bz2
+```
+4. Run frontend script:
+```sh
+cd waterslide-android-dist
+./waterslide <config-file>
 ```
 
 ## Licensing
