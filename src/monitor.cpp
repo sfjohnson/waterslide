@@ -93,6 +93,7 @@ static void *statsLoop (UNUSED void *arg) {
     protoCh1->mutable_audiostats()->set_bufferunderruncount(globals_get1ui(statsCh1Audio, bufferUnderrunCount));
     protoCh1->mutable_audiostats()->set_codecerrorcount(globals_get1ui(statsCh1Audio, codecErrorCount));
     protoCh1->mutable_audiostats()->set_streambufferpos(globals_get1ui(statsCh1Audio, streamBufferPos));
+    protoCh1->mutable_audiostats()->set_encodethreadjittercount(globals_get1ui(statsCh1Audio, encodeThreadJitterCount));
 
     std::string protoData;
     proto.SerializeToString(&protoData);

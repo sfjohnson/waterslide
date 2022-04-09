@@ -14,6 +14,7 @@ message MonitorProto {
     uint32 bufferOverrunCount = 3;
     uint32 bufferUnderrunCount = 4;
     uint32 codecErrorCount = 5;
+    uint32 encodeThreadJitterCount = 6;
   }
 
   message EndpointStats {

@@ -34,6 +34,10 @@
         <div class="label">codec errors:</div>
         <div class="value">{data.codecErrorCount}</div>
       </div>
+      <div class="entry">
+        <div class="label">sender OS jitter:</div>
+        <div class="value">{data.encodeThreadJitterCount}</div>
+      </div>
     </div>
   </div>
 </div>
