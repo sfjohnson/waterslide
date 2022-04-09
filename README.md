@@ -31,7 +31,7 @@ Realtime data transport with multihoming.
 
 ## Setup (common)
 
-1. Install NodeJS 16 and npm 8
+1. Install Node.js 16 and npm 8
 
 2. Run
 ```sh
@@ -90,6 +90,128 @@ tar xf waterslide-android-dist.tar.bz2
 cd waterslide-android-dist
 ./waterslide <config-file>
 ```
+
+## Frontend
+
+Processing, sending and receiving data is handled by the binary made by the `make` command above. This code is written in C/C++/Rust. NAT traversal, discovery and configuration are handled by code written in TypeScript/Node.js which is the frontend of waterslide.
+
+### Build frontend
+
+```sh
+cd frontend
+npm run build
+```
+
+Built files go to the `frontend/out` folder.
+
+### Run frontend
+
+```sh
+cd frontend
+npm start config.json
+```
+
+### Example config (sender)
+
+```json
+{
+  "mode": 0,
+  "endpoints": [
+    {
+      "addr": [192, 168, 1, 5],
+      "port": 53531,
+      "interface": "en0"
+    }
+  ],
+  "mux": {
+    "maxChannels": 10,
+    "maxPacketSize": 1500
+  },
+  "audio": {
+    "channelCount": 2,
+    "ioSampleRate": 44100,
+    "deviceName": "Soundflower (2ch)",
+    "levelSlowAttack": 0.004,
+    "levelSlowRelease": 0.0008,
+    "levelFastAttack": 0.31,
+    "levelFastRelease": 0.00003
+  },
+  "opus": {
+    "bitrate": 256000,
+    "frameSize": 240,
+    "maxPacketSize": 250,
+    "sampleRate": 48000,
+    "decodeRingLength": 8192
+  },
+  "fec": {
+    "symbolLen": 256,
+    "sourceSymbolsPerBlock": 6,
+    "repairSymbolsPerBlock": 3
+  },
+  "monitor": {
+    "wsPort": 7681
+  }
+}
+```
+
+### Example config (receiver)
+
+```json
+{
+  "mode": 1,
+  "endpoints": [
+    {
+      "addr": [],
+      "port": 53531,
+      "interface": "en0"
+    }
+  ],
+  "mux": {
+    "maxChannels": 10,
+    "maxPacketSize": 1500
+  },
+  "audio": {
+    "channelCount": 2,
+    "ioSampleRate": 44100,
+    "deviceName": "Built-in Output",
+    "levelSlowAttack": 0.004,
+    "levelSlowRelease": 0.0008,
+    "levelFastAttack": 0.31,
+    "levelFastRelease": 0.00003
+  },
+  "opus": {
+    "bitrate": 256000,
+    "frameSize": 240,
+    "maxPacketSize": 250,
+    "sampleRate": 48000,
+    "decodeRingLength": 8192
+  },
+  "fec": {
+    "symbolLen": 256,
+    "sourceSymbolsPerBlock": 6,
+    "repairSymbolsPerBlock": 3
+  },
+  "monitor": {
+    "wsPort": 7681
+  }
+}
+```
+
+## Monitor
+
+The C/C++/Rust code runs a WebSocket server that provides analytics data. An interface called the monitor connects to this server and provides audio meters and detailed information on the status and health of the stream.
+
+### Dev server
+
+1. Copy `protobufs/monitor.proto` to the `monitor/public` folder.
+2.
+```sh
+cd monitor
+npm run dev
+```
+3. Go to http://localhost:3000
+4. If waterslide is started or restarted, refresh the page.
+5. in `monitor/src/App.svelte` the address of the WebSocket server can be changed for monitoring a remote device running waterslide.
 
 ## Licensing
 
