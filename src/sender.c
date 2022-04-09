@@ -55,6 +55,10 @@ static void *startEncodeThread (UNUSED void *arg) {
   // Sleep for shorter than targetSizeSeconds to make sure encodeRingSize doesn't get too full despite OS jitter.
   double sleepUs = 1000000.0 * 0.5 * targetSizeSeconds;
 
+  if (utils_setCallerThreadPrioHigh() < 0) {
+    printf("Warning: failed to set encode thread to high priority.\n");
+  }
+
   while (true) {
     int encodeRingSize = ck_ring_size(&encodeRing);
     int encodeRingSizeFrames = encodeRingSize / networkChannelCount;

@@ -1,5 +1,36 @@
+#include <pthread.h>
 #include <stdbool.h>
 #include "utils.h"
+
+#if defined(__MACH__)
+#include <mach/mach_time.h>
+#include <mach/thread_act.h>
+#endif
+
+int utils_setCallerThreadPrioHigh () {
+  // DEBUG: implement for other platforms
+  #if defined(__MACH__)
+  // https://stackoverflow.com/a/44310370
+  mach_timebase_info_data_t timebase;
+  kern_return_t kr = mach_timebase_info(&timebase);
+  if (kr != KERN_SUCCESS) return -1;
+
+  // Set the thread priority.
+  struct thread_time_constraint_policy ttcpolicy;
+  thread_port_t threadport = pthread_mach_thread_np(pthread_self());
+
+  // In ticks. Therefore to convert nanoseconds to ticks multiply by (timebase.denom / timebase.numer).
+  ttcpolicy.period = 500 * 1000 * timebase.denom / timebase.numer; // Period over which we demand scheduling.
+  ttcpolicy.computation = 100 * 1000 * timebase.denom / timebase.numer; // Minimum time in a period where we must be running.
+  ttcpolicy.constraint = 100 * 1000 * timebase.denom / timebase.numer; // Maximum time between start and end of our computation in the period.
+  ttcpolicy.preemptible = FALSE;
+
+  kr = thread_policy_set(threadport, THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&ttcpolicy, THREAD_TIME_CONSTRAINT_POLICY_COUNT);
+  if (kr != KERN_SUCCESS) return -2;
+  #endif
+
+  return 0;
+}
 
 int utils_encodeVarintU64 (uint8_t *buf, int len, uint64_t val) {
   int pos = 0;
