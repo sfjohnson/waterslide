@@ -131,6 +131,9 @@ int config_init (const char *b64ConfigStr) {
 
   globals_set1i(endpoints, endpointCount, endpointCount);
 
+  globals_set1s(endpoints, privateKey, initConfig.privatekey().c_str());
+  globals_set1s(endpoints, peerPublicKey, initConfig.peerpublickey().c_str());
+
   globals_set1i(mux, maxChannels, initConfig.mux().maxchannels());
   globals_set1i(mux, maxPacketSize, initConfig.mux().maxpacketsize());
 

@@ -24,6 +24,6 @@ void mux_deinitTransfer (mux_transfer_t *transfer);
 void mux_resetTransfer (mux_transfer_t *transfer);
 int mux_setChannel (mux_transfer_t *transfer, uint64_t chId, int chunksPerBlock, int chunkLen, uint8_t *blockBuf);
 // emitPackets also resets transfer once all packets are emitted
-int mux_emitPackets (mux_transfer_t *transfer, int (*onPacket)(const uint8_t *, int));
+int mux_emitPackets (mux_transfer_t *transfer, int (*onPacket)(const uint8_t *, int)); // NOTE: this is not thread safe
 
 #endif

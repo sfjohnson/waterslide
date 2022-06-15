@@ -1,11 +1,17 @@
 #include <pthread.h>
 #include <stdbool.h>
+#include <netinet/in.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <stdio.h>
 #include "utils.h"
 
 #if defined(__MACH__)
 #include <mach/mach_time.h>
 #include <mach/thread_act.h>
 #endif
+
+#define UNUSED __attribute__((unused))
 
 int utils_setCallerThreadPrioHigh () {
   // DEBUG: implement for other platforms
@@ -29,6 +35,79 @@ int utils_setCallerThreadPrioHigh () {
   if (kr != KERN_SUCCESS) return -2;
   #endif
 
+  return 0;
+}
+
+int utils_bindSocketToIf (int socket, const char *ifName, UNUSED int ifLen, int port) {
+  int err;
+  #if defined(__ANDROID__) || defined(__linux__)
+  err = setsockopt(socket, SOL_SOCKET, SO_BINDTODEVICE, ifName, ifLen);
+  if (err < 0) {
+    printf("Endpoint: interface bind failed. CAP_NET_RAW or root are required!\n");
+    return -1;
+  }
+  #elif defined(__MACH__)
+  int ifIndex = if_nametoindex(ifName);
+  if (ifIndex == 0) {
+    printf("Endpoint: interface not found!\n");
+    return -2;
+  }
+  err = setsockopt(socket, IPPROTO_IP, IP_BOUND_IF, &ifIndex, sizeof(ifIndex));
+  if (err < 0) {
+    printf("Endpoint: interface bind failed!\n");
+    return -3;
+  }
+  #else
+  printf("Endpoint: interface bind failed, this OS is not supported!\n");
+  return -4;
+  #endif
+
+  if (port < 0) {
+    printf("Bound to interface %.*s\n", ifLen, ifName);
+    return 0;
+  }
+
+  bool bound = false;
+  struct ifaddrs *ifList;
+  err = getifaddrs(&ifList);
+  if (err < 0) return -5;
+  struct ifaddrs *currentIf = ifList;
+  while (currentIf != NULL) {
+    if (currentIf->ifa_addr == NULL || strcmp(currentIf->ifa_name, ifName) != 0) {
+      currentIf = currentIf->ifa_next;
+      continue;
+    }
+
+    if (currentIf->ifa_addr->sa_family == AF_INET) {
+      struct sockaddr_in *foundAddr = (struct sockaddr_in *)currentIf->ifa_addr;
+      uint32_t addrBytes = foundAddr->sin_addr.s_addr;
+      foundAddr->sin_port = htons(port);
+
+      err = bind(socket, (struct sockaddr*)foundAddr, sizeof(struct sockaddr_in));
+      if (err < 0) {
+        freeifaddrs(ifList);
+        return -6;
+      }
+
+      printf("Bound to %d.%d.%d.%d:%d on interface %s\n", addrBytes & 0xff, (addrBytes>>8) & 0xff, (addrBytes>>16) & 0xff, addrBytes >> 24, port, ifName);
+      bound = true;
+      break;
+    } else if (currentIf->ifa_addr->sa_family == AF_INET6) {
+      // TODO: IPv6
+      // uint8_t *addr = ((struct sockaddr_in6 *)currentIf->ifa_addr)->sin6_addr.s6_addr;
+      // printf("* %s, ", currentIf->ifa_name);
+      // for (int i = 0; i < 16; i += 2) {
+      //   printf("%02x%02x", addr[i], addr[i+1]);
+      //   if (i != 14) printf(":");
+      // }
+      // printf("\n");
+    }
+
+    currentIf = currentIf->ifa_next;
+  }
+
+  freeifaddrs(ifList);
+  if (!bound) return -8;
   return 0;
 }
 

@@ -5,6 +5,8 @@
 
 int utils_setCallerThreadPrioHigh ();
 
+int utils_bindSocketToIf (int socket, const char *ifName, int ifLen, int port);
+
 int utils_encodeVarintU64 (uint8_t *buf, int len, uint64_t val);
 int utils_decodeVarintU64 (const uint8_t *buf, int len, uint64_t *result);
 int utils_encodeVarintU16 (uint8_t *buf, int len, uint16_t val);

@@ -41,8 +41,9 @@ download android v1.6.3       oboe             liboboe
 download macos   v19.7.3      portaudio        libportaudio
 download all     v5.2.5       r8brain-free-src libr8brain
 download all     v1.4.8       opus             libopus
-download all     v1.7.4       raptorq          libraptorq
+download all     v1.7.10      raptorq          libraptorq
 download all     v19.7.11     uWebSockets      libuwebsockets
+download all     v0.4.13      boringtun        libboringtun
 
 echo "Fixing protobuf include path..."
 mkdir -p include/deps/google

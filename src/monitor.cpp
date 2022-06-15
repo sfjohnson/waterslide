@@ -86,8 +86,8 @@ static void *statsLoop (UNUSED void *arg) {
       if (relSbn > 127) relSbn -= 256;
       if (relSbn < -128) relSbn += 256;
       protoEndpoints[i]->set_lastrelativesbn(relSbn);
-      protoEndpoints[i]->set_duppacketcount(globals_get1uiv(statsCh1Endpoints, dupPacketCount, i));
-      protoEndpoints[i]->set_ooopacketcount(globals_get1uiv(statsCh1Endpoints, oooPacketCount, i));
+      protoEndpoints[i]->set_duppacketcount(globals_get1uiv(statsEndpoints, dupPacketCount, i));
+      protoEndpoints[i]->set_ooopacketcount(globals_get1uiv(statsEndpoints, oooPacketCount, i));
     }
     protoCh1->mutable_audiostats()->set_bufferoverruncount(globals_get1ui(statsCh1Audio, bufferOverrunCount));
     protoCh1->mutable_audiostats()->set_bufferunderruncount(globals_get1ui(statsCh1Audio, bufferUnderrunCount));

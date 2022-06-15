@@ -12,7 +12,7 @@ Realtime data transport with multihoming.
 - [ ] Lossless audio
 - [x] Multi-channel audio
 - [ ] Resampling to correct for clock drift between sender and receiver
-- [ ] Encryption
+- [x] Encryption
 - [ ] Network discovery
 
 ## Anti-features
@@ -116,6 +116,8 @@ npm start config.json
 ```json
 {
   "mode": 0,
+  "privateKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
+  "peerPublicKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
   "endpoints": [
     {
       "addr": [192, 168, 1, 5],
@@ -159,6 +161,8 @@ npm start config.json
 ```json
 {
   "mode": 1,
+  "privateKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
+  "peerPublicKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
   "endpoints": [
     {
       "addr": [],

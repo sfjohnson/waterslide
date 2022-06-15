@@ -8,6 +8,7 @@
 #include "globals.h"
 #include "demux.h"
 #include "endpoint.h"
+#include "endpoint-secure.h"
 #include "audio.h"
 #include "utils.h"
 
@@ -158,10 +159,25 @@ int receiver_init () {
   globals_get1s(audio, deviceName, audioDeviceName, sizeof(audioDeviceName));
   if (audio_start(audioDeviceName) < 0) return -8;
 
-  err = endpoint_init(true, demux_readPacket);
-  if (err < 0) {
-    printf("endpoint_init error: %d\n", err);
-    return -10;
+  char privateKey[SEC_KEY_LENGTH + 1] = { 0 };
+  char peerPublicKey[SEC_KEY_LENGTH + 1] = { 0 };
+  globals_get1s(endpoints, privateKey, privateKey, sizeof(privateKey));
+  globals_get1s(endpoints, peerPublicKey, peerPublicKey, sizeof(peerPublicKey));
+
+  if (strlen(privateKey) == SEC_KEY_LENGTH && strlen(peerPublicKey) == SEC_KEY_LENGTH) {
+    printf("*** Encryption enabled\n");
+    err = endpointsec_init(privateKey, peerPublicKey, demux_readPacket);
+    if (err < 0) {
+      printf("endpointsec_init error: %d\n", err);
+      return -9;
+    }
+  } else {
+    printf("*** Encryption disabled\n");
+    err = endpoint_init(demux_readPacket);
+    if (err < 0) {
+      printf("endpoint_init error: %d\n", err);
+      return -10;
+    }
   }
 
   return 0;

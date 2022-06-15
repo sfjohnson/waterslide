@@ -51,9 +51,11 @@ message InitConfigProto {
 
   Mode mode = 1;
   repeated Endpoint endpoints = 2;
-  Mux mux = 3;
-  Audio audio = 4;
-  Opus opus = 5;
-  Fec fec = 6;
-  Monitor monitor = 7;
+  string privateKey = 3;
+  string peerPublicKey = 4;
+  Mux mux = 5;
+  Audio audio = 6;
+  Opus opus = 7;
+  Fec fec = 8;
+  Monitor monitor = 9;
 }

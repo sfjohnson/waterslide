@@ -11,6 +11,7 @@
 #include "ck/ck_ring.h"
 #include "globals.h"
 #include "endpoint.h"
+#include "endpoint-secure.h"
 #include "mux.h"
 #include "raptorq/raptorq.h"
 #include "syncer.h"
@@ -35,7 +36,10 @@ static int recordCallback (const void *inputBuffer, UNUSED void *outputBuffer, u
 }
 #endif
 
-static void *startEncodeThread (UNUSED void *arg) {
+static void *startEncodeThread (void *arg) {
+  intptr_t secEnabled = (intptr_t)arg;
+  int (*onPacketEmit)(const uint8_t *, int) = secEnabled ? endpointsec_send : endpoint_send;
+
   const int symbolLen = globals_get1i(fec, symbolLen);
   const int sourceSymbolsPerBlock = globals_get1i(fec, sourceSymbolsPerBlock);
   const int repairSymbolsPerBlock = globals_get1i(fec, repairSymbolsPerBlock);
@@ -129,7 +133,7 @@ static void *startEncodeThread (UNUSED void *arg) {
 
       mux_resetTransfer(&transfer);
       mux_setChannel(&transfer, 1, sourceSymbolsPerBlock + repairSymbolsPerBlock, 4 + symbolLen, fecEncodedBuf);
-      mux_emitPackets(&transfer, endpoint_send);
+      mux_emitPackets(&transfer, onPacketEmit);
     }
   }
 }
@@ -152,10 +156,28 @@ int sender_init () {
   if (mux_init() < 0) return -4;
   if (mux_initTransfer(&transfer) < 0) return -5;
 
-  int err = endpoint_init(false, NULL);
-  if (err < 0) {
-    printf("endpoint_init error: %d\n", err);
-    return -6;
+  char privateKey[SEC_KEY_LENGTH + 1] = { 0 };
+  char peerPublicKey[SEC_KEY_LENGTH + 1] = { 0 };
+  globals_get1s(endpoints, privateKey, privateKey, sizeof(privateKey));
+  globals_get1s(endpoints, peerPublicKey, peerPublicKey, sizeof(peerPublicKey));
+
+  int err;
+  intptr_t secEnabled = 0;
+  if (strlen(privateKey) == SEC_KEY_LENGTH && strlen(peerPublicKey) == SEC_KEY_LENGTH) {
+    secEnabled = 1;
+    printf("*** Encryption enabled\n");
+    err = endpointsec_init(privateKey, peerPublicKey, NULL);
+    if (err < 0) {
+      printf("endpointsec_init error: %d\n", err);
+      return -6;
+    }
+  } else {
+    printf("*** Encryption disabled\n");
+    err = endpoint_init(NULL);
+    if (err < 0) {
+      printf("endpoint_init error: %d\n", err);
+      return -7;
+    }
   }
 
   unsigned char mapping[networkChannelCount];
@@ -164,13 +186,13 @@ int sender_init () {
   encoder = opus_multistream_encoder_create(globals_get1i(opus, sampleRate), networkChannelCount, networkChannelCount, 0, mapping, OPUS_APPLICATION_AUDIO, &err);
   if (err < 0) {
     printf("opus_multistream_encoder_create failed: %s\n", opus_strerror(err));
-    return -7;
+    return -8;
   }
 
   err = opus_multistream_encoder_ctl(encoder, OPUS_SET_BITRATE(globals_get1i(opus, bitrate)));
   if (err < 0) {
     printf("opus_multistream_encoder_ctl failed: %s\n", opus_strerror(err));
-    return -8;
+    return -9;
   }
 
   // https://twitter.com/marcan42/status/1264844348933369858
@@ -286,7 +308,7 @@ int sender_init () {
   }
 
   pthread_t encodeThread;
-  err = pthread_create(&encodeThread, NULL, startEncodeThread, NULL);
+  err = pthread_create(&encodeThread, NULL, startEncodeThread, (void*)secEnabled);
   if (err != 0) {
     printf("pthread_create failed: %d\n", err);
     return -20;

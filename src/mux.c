@@ -50,7 +50,7 @@ int mux_setChannel (mux_transfer_t *transfer, uint64_t chId, int chunksPerBlock,
   return ++transfer->chCount;
 }
 
-// DEBUG: this function is not thread safe because of packetBuf
+// NOTE: this function is not thread safe because of packetBuf
 int mux_emitPackets (mux_transfer_t *transfer, int (*onPacket)(const uint8_t *, int)) {
   int channelsRemaining = transfer->chCount;
   while (channelsRemaining > 0) {

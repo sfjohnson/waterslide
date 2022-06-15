@@ -2,6 +2,8 @@
 
 globals_define1i(root, mode)
 
+globals_define1s(endpoints, privateKey, SEC_KEY_LENGTH)
+globals_define1s(endpoints, peerPublicKey, SEC_KEY_LENGTH)
 globals_define1i(endpoints, endpointCount)
 globals_define1sv(endpoints, interface, MAX_ENDPOINTS, MAX_NET_IF_NAME_LEN)
 globals_define1uiv(endpoints, addr, MAX_ENDPOINTS)
@@ -31,11 +33,12 @@ globals_define1i(fec, repairSymbolsPerBlock)
 
 globals_define1i(monitor, wsPort)
 
+globals_define1uiv(statsEndpoints, open, MAX_ENDPOINTS)
+globals_define1uiv(statsEndpoints, dupPacketCount, MAX_ENDPOINTS)
+globals_define1uiv(statsEndpoints, oooPacketCount, MAX_ENDPOINTS)
+globals_define1iv(statsCh1Endpoints, lastSbn, MAX_ENDPOINTS)
 globals_define1ui(statsCh1, dupBlockCount)
 globals_define1ui(statsCh1, oooBlockCount)
-globals_define1iv(statsCh1Endpoints, lastSbn, MAX_ENDPOINTS)
-globals_define1uiv(statsCh1Endpoints, dupPacketCount, MAX_ENDPOINTS)
-globals_define1uiv(statsCh1Endpoints, oooPacketCount, MAX_ENDPOINTS)
 globals_define1uiv(statsCh1Audio, clippingCounts, MAX_AUDIO_CHANNELS)
 globals_define1ffv(statsCh1Audio, levelsFast, MAX_AUDIO_CHANNELS)
 globals_define1ffv(statsCh1Audio, levelsSlow, MAX_AUDIO_CHANNELS)

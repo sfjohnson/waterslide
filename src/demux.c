@@ -72,9 +72,9 @@ int demux_readPacket (const uint8_t *buf, int bufLen, int endpointIndex) {
     }
     endpointsSeqLast[endpointIndex] = seq;
     if (seqDiff == 0) {
-      globals_add1uiv(statsCh1Endpoints, dupPacketCount, endpointIndex, 1);
+      globals_add1uiv(statsEndpoints, dupPacketCount, endpointIndex, 1);
     } else if (seqDiff < 0 || seqDiff > 1) {
-      globals_add1uiv(statsCh1Endpoints, oooPacketCount, endpointIndex, 1);
+      globals_add1uiv(statsEndpoints, oooPacketCount, endpointIndex, 1);
     }
 
     if (pos + chunkLen > bufLen) return -7;
