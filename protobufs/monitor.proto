@@ -20,8 +20,11 @@ message MonitorProto {
   message EndpointStats {
     string interfaceName = 1;
     int32 lastRelativeSbn = 2;
-    uint32 dupPacketCount = 3;
-    uint32 oooPacketCount = 4;
+    bool open = 3;
+    uint32 dupPacketCount = 4;
+    uint32 oooPacketCount = 5;
+    uint64 bytesOut = 6;
+    uint64 bytesIn = 7;
   }
 
   message MuxChannelStats {

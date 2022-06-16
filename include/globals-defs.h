@@ -12,10 +12,10 @@ using namespace std;
 #include <string.h>
 
 // Data types
-// 1i: scalar 32-bit signed integer
-// 1ui: scalar 32-bit unsigned integer
-// 1iv: individually addressable array of 32-bit signed integers
-// 1uiv: individually addressable array of 32-bit unsigned integers
+// 1i: scalar signed integer (32-bit or 64-bit depending on arch)
+// 1ui: scalar unsigned integer (32-bit or 64-bit depending on arch)
+// 1iv: individually addressable array of signed integers (32-bit or 64-bit depending on arch)
+// 1uiv: individually addressable array of unsigned integers (32-bit or 64-bit depending on arch)
 // 1ff: scalar double-precision float
 // 1ffv: individually addressable array of doubles
 // 1s: null-terminated char array

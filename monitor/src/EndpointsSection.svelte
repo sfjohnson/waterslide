@@ -14,6 +14,18 @@
         <TimingGraph />
         <div class="stats-container">
           <div class="entry">
+            <div class="label">up:</div>
+            <div class="value">{endpoint.open}</div>
+          </div>
+          <div class="entry">
+            <div class="label">sent:</div>
+            <div class="value">{`${(endpoint.bytesOut / 1000000).toFixed(2)} MB`}</div>
+          </div>
+          <div class="entry">
+            <div class="label">received:</div>
+            <div class="value">{`${(endpoint.bytesIn / 1000000).toFixed(2)} MB`}</div>
+          </div>
+          <div class="entry">
             <div class="label">duplicated packets:</div>
             <div class="value">{endpoint.dupPacketCount}</div>
           </div>

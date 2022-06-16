@@ -48,19 +48,18 @@ static void sendBufToAll (const uint8_t *buf, int bufLen) {
         srcSockaddr.sin_addr.s_addr = packedSrcAddr >> 16;
 
         sentLen = sendto(sockets[i].socket, buf, bufLen, 0, (struct sockaddr*)&srcSockaddr, sizeof(struct sockaddr_in));
-
-        // DEBUG: log
-        // printf("sendto %d.%d.%d.%d:%d length %d\n", srcSockaddr.sin_addr.s_addr & 0xff, (srcSockaddr.sin_addr.s_addr>>8) & 0xff, (srcSockaddr.sin_addr.s_addr>>16) & 0xff, srcSockaddr.sin_addr.s_addr >> 24, htons(srcSockaddr.sin_port), sentLen);
       }
     }
 
-    // If send failed, close this socket and re-open on a timer
     if (sentLen != bufLen) {
-      // DEBUG: log
-      // printf("send or sendto failed: %s\n", strerror(errno));
+      // If send failed, close this socket and re-open on a timer
       globals_set1uiv(statsEndpoints, open, i, 0);
       close(sockets[i].socket);
       sockets[i].timeToReopen = ENDPOINT_REOPEN_INTERVAL;
+    } else {
+      // Accounts for IP and UDP headers
+      // DEBUG: This assumes IPv4
+      globals_add1uiv(statsEndpoints, bytesOut, i, bufLen + 28);
     }
   }
 }
@@ -122,6 +121,10 @@ static void *recvLoop (void *arg) {
 
     // Pack source port and address and assign in one atomic operation
     sockets[epIndex].packedSrcAddr = ((uint_fast64_t)srcSockaddr.sin_addr.s_addr << 16) | srcSockaddr.sin_port;
+
+    // Accounts for IP and UDP headers
+    // DEBUG: This assumes IPv4
+    globals_add1uiv(statsEndpoints, bytesIn, epIndex, recvLen + 28);
 
     wgRead(recvBuf, recvLen, epIndex);
   }

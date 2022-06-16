@@ -46,6 +46,10 @@ static void *recvLoop (void *arg) {
       continue;
     }
 
+    // Accounts for IP and UDP headers
+    // DEBUG: This assumes IPv4
+    globals_add1uiv(statsEndpoints, bytesIn, epIndex, recvLen + 28);
+
     _onPacket(recvBuf, recvLen, epIndex);
   }
 
@@ -161,11 +165,15 @@ int endpoint_send (const uint8_t *buf, int bufLen) {
 
     ssize_t sentLen = send(sockets[i].socket, buf, bufLen, 0);
 
-    // If send failed, close this socket and re-open on a timer
     if (sentLen != bufLen) {
+      // If send failed, close this socket and re-open on a timer
       globals_set1uiv(statsEndpoints, open, i, 0);
       close(sockets[i].socket);
       sockets[i].timeToReopen = ENDPOINT_REOPEN_INTERVAL;
+    } else {
+      // Accounts for IP and UDP headers
+      // DEBUG: This assumes IPv4
+      globals_add1uiv(statsEndpoints, bytesOut, i, bufLen + 28);
     }
   }
 
