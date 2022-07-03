@@ -18,25 +18,36 @@ message InitConfigProto {
     int32 maxPacketSize = 2;
   }
 
-  message Audio {
-    int32 channelCount = 1;
-    int32 ioSampleRate = 2;
-    string deviceName = 3;
-    // higher means quicker
-    // Main meter
-    float levelSlowAttack = 4;
-    float levelSlowRelease = 5;
-    // Peak meter
-    float levelFastAttack = 6;
-    float levelFastRelease = 7;
-  }
-
   message Opus {
     int32 bitrate = 1; // 128000 bps per channel is a good starting point. This value is the total bitrate not per-channel bitrate.
     int32 frameSize = 2; // 240 samples = 5 ms @ 48 kHz // https://www.audiokinetic.com/library/edge/?source=Help&id=opus_soft_parameters
     int32 maxPacketSize = 3; // Packets with 120 frames at 256 kbps stereo are around 80 to 130 bytes. This value also affects the minimum data rate.
-    int32 sampleRate = 4;
-    int32 decodeRingLength = 6; // Must be larger than frameSize. Affects receive latency.
+    int32 decodeRingLength = 6; // In samples. Must be larger than frameSize. Affects receive latency.
+  }
+
+  message PCM {
+    int32 frameSize = 1; // In samples. Packet size in bytes is 3 * channelCount * frameSize + 2
+    int32 sampleRate = 2;
+    int32 decodeRingLength = 6; // In samples. Must be larger than frameSize. Affects receive latency.
+  }
+
+  message Audio {
+    int32 channelCount = 1;
+    int32 ioSampleRate = 2;
+    string deviceName = 3;
+
+    oneof encoding {
+      Opus opus = 5;
+      PCM pcm = 6;  
+    }
+
+    // higher means quicker
+    // Main meter
+    float levelSlowAttack = 7;
+    float levelSlowRelease = 8;
+    // Peak meter
+    float levelFastAttack = 9;
+    float levelFastRelease = 10;
   }
 
   message Fec {
@@ -55,7 +66,6 @@ message InitConfigProto {
   string peerPublicKey = 4;
   Mux mux = 5;
   Audio audio = 6;
-  Opus opus = 7;
-  Fec fec = 8;
-  Monitor monitor = 9;
+  Fec fec = 7;
+  Monitor monitor = 8;
 }

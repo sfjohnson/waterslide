@@ -9,7 +9,8 @@
 static ck_ring_t *_ring;
 static ck_ring_buffer_t *_ringBuf;
 static int _fullRingSize;
-static int networkChannelCount, deviceChannelCount, ringMaxSize;
+static int networkChannelCount, deviceChannelCount, ringMaxSize, audioFrameSize;
+static double encodedSampleRate; // Hz
 
 static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, UNUSED const PaStreamCallbackTimeInfo* timeInfo, UNUSED PaStreamCallbackFlags statusFlags, UNUSED void *userData) {
   static bool underrun = false;
@@ -52,27 +53,45 @@ static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, uns
 }
 
 int audio_init (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize) {
+  unsigned int audioEncoding = globals_get1ui(audio, encoding);
+  int decodeRingLength;
+
+  switch (audioEncoding) {
+    case AUDIO_ENCODING_OPUS:
+      audioFrameSize = globals_get1i(opus, frameSize);
+      encodedSampleRate = AUDIO_OPUS_SAMPLE_RATE;
+      decodeRingLength = globals_get1i(opus, decodeRingLength);
+      break;
+    case AUDIO_ENCODING_PCM:
+      audioFrameSize = globals_get1i(pcm, frameSize);
+      encodedSampleRate = globals_get1i(pcm, sampleRate);
+      decodeRingLength = globals_get1i(pcm, decodeRingLength);
+      break;
+    default:
+      return -1;
+  }
+
   _ring = ring;
   _ringBuf = ringBuf;
   _fullRingSize = fullRingSize;
   networkChannelCount = globals_get1i(audio, networkChannelCount);
-  ringMaxSize = networkChannelCount * globals_get1i(opus, decodeRingLength);
+  ringMaxSize = networkChannelCount * decodeRingLength;
 
   PaError pErr = Pa_Initialize();
   if (pErr != paNoError) {
     printf("Pa_Initialize error: %d\n", pErr);
-    return -1;
+    return -2;
   }
 
   int deviceCount = Pa_GetDeviceCount();
   if (deviceCount < 0) {
     printf("Pa_GetDeviceCount error: %d\n", deviceCount);
-    return -2;
+    return -3;
   }
 
   if (deviceCount == 0) {
     printf("No audio devices.\n");
-    return -3;
+    return -4;
   }
 
   printf("\nAvailable audio devices:\n");
@@ -86,8 +105,6 @@ int audio_init (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize) {
 }
 
 int audio_start (const char *audioDeviceName) {
-  int opusFrameSize = globals_get1i(opus, frameSize);
-
   int deviceCount = Pa_GetDeviceCount();
   if (deviceCount < 0) {
     printf("Pa_GetDeviceCount error: %d\n", deviceCount);
@@ -128,7 +145,7 @@ int audio_start (const char *audioDeviceName) {
   params.channelCount = deviceInfo->maxOutputChannels;
   params.sampleFormat = paFloat32;
   params.suggestedLatency = deviceInfo->defaultLowOutputLatency;
-  PaError pErr = Pa_OpenStream(&stream, NULL, &params, globals_get1i(audio, ioSampleRate), opusFrameSize, 0, playCallback, NULL);
+  PaError pErr = Pa_OpenStream(&stream, NULL, &params, globals_get1i(audio, ioSampleRate), audioFrameSize, 0, playCallback, NULL);
   if (pErr != paNoError) {
     printf("Pa_OpenStream error: %d, %s\n", pErr, Pa_GetErrorText(pErr));
     return -5;
@@ -137,13 +154,12 @@ int audio_start (const char *audioDeviceName) {
   const PaStreamInfo *streamInfo = Pa_GetStreamInfo(stream);
   double deviceLatency = streamInfo->outputLatency; // seconds
   double deviceSampleRate = streamInfo->sampleRate; // Hz
-  double opusSampleRate = globals_get1i(opus, sampleRate); // Hz
   // Set the ioSampleRate global in case PortAudio gave a different sample rate to the one requested.
   globals_set1i(audio, ioSampleRate, (int)deviceSampleRate);
   printf("Device latency (ms): %f\n", 1000.0 * deviceLatency);
   printf("Sample rate: %f\n", deviceSampleRate);
 
-  int err = syncer_init(opusSampleRate, deviceSampleRate, opusFrameSize, _ring, _ringBuf, _fullRingSize);
+  int err = syncer_init(encodedSampleRate, deviceSampleRate, audioFrameSize, _ring, _ringBuf, _fullRingSize);
   if (err < 0) {
     printf("syncer_init error: %d\n", err);
     return -6;

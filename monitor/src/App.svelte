@@ -10,44 +10,29 @@
     streamBufferSize: 8192
   }
 
-  let currentState = {}
-
-  // let currentState = {
-  //   dupBlockCount: 0,
-  //   oooBlockCount: 0,
+  // Example state:
+  // {
+  //   dupBlockCount: 1,
   //   endpoint: [
   //     {
-  //       interface: 'eth0',
-  //       dupPacketCount: 0,
-  //       oooPacketCount: 0,
-  //       lastRelativeSbn: 0
-  //     },
-  //     {
-  //       interface: 'en15',
-  //       dupPacketCount: 0,
-  //       oooPacketCount: 0,
-  //       lastRelativeSbn: 0
+  //       interfaceName: 'lo0',
+  //       open: true,
+  //       dupPacketCount: 1,
+  //       bytesOut: '660',
+  //       bytesIn: '9532310'
   //     }
   //   ],
   //   audioStats: {
   //     audioChannel: [
-  //       {
-  //         clippingCount: 0,
-  //         levelFast: 0,
-  //         levelSlow: 0
-  //       },
-  //       {
-  //         clippingCount: 0,
-  //         levelFast: 0,
-  //         levelSlow: 0
-  //       }
+  //       { levelFast: 0.1255815029144287, levelSlow: 0.0423738956451416 },
+  //       { levelFast: 0.11490904539823532, levelSlow: 0.0403149351477623 }
   //     ],
-  //     bufferOverrunCount: 0,
-  //     bufferUnderrunCount: 0,
-  //     codecErrorCount: 0,
-  //     streamBufferPos: 0
+  //     streamBufferPos: 4301,
+  //     bufferUnderrunCount: 1,
+  //     opusStats: { codecErrorCount: 1 }
   //   }
   // }
+  let currentState = {}
 
   const wsClient = new WebSocket(wsServerAddr)
   wsClient.addEventListener('open', async (event) => {

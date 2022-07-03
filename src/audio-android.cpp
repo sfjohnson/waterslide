@@ -92,7 +92,7 @@ int audio_start (UNUSED const char *audioDeviceName) {
   int32_t ioSampleRate = stream->getSampleRate();
   globals_set1i(audio, ioSampleRate, ioSampleRate);
   printf("Sample rate: %d\n", ioSampleRate);
-  int err = syncer_init((double)globals_get1i(opus, sampleRate), (double)ioSampleRate, globals_get1i(opus, frameSize), _ring, _ringBuf, _fullRingSize);
+  int err = syncer_init((double)AUDIO_OPUS_SAMPLE_RATE, (double)ioSampleRate, globals_get1i(opus, frameSize), _ring, _ringBuf, _fullRingSize);
   if (err < 0) {
     printf("syncer_init error: %d\n", err);
     return -2;

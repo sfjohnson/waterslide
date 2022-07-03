@@ -1,11 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include "config.h"
 #include "globals.h"
 #include "sender.h"
 #include "receiver.h"
 #include "monitor.h"
+
+static bool archChecks () {
+  return sizeof(double) == 8 &&
+    sizeof(float) == 4 &&
+    sizeof(intptr_t) >= 4 &&
+    ((-1) >> 1) < 0;
+}
 
 int main (int argc, char *argv[]) {
   // Disable full buffering when executed outside of a terminal (e.g. NodeJS spawn)
@@ -18,8 +26,8 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  if (sizeof(double) != 8 || sizeof(float) != 4 || sizeof(intptr_t) < 4) {
-    printf("Arch check failed: expected 64 bit double, 32 bit float and at least 32 bit pointers.\n");
+  if (!archChecks()) {
+    printf("Architecture and compiler checks failed: expected 64-bit double, 32-bit float, at least 32-bit pointers, and arithmetic right shift for negative numbers.\n");
     return EXIT_FAILURE;
   }
 

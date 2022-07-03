@@ -30,10 +30,18 @@
         <div class="label">buffer underruns:</div>
         <div class="value">{data.bufferUnderrunCount}</div>
       </div>
-      <div class="entry">
-        <div class="label">codec errors:</div>
-        <div class="value">{data.codecErrorCount}</div>
-      </div>
+      {#if data.opusStats}
+        <div class="entry">
+          <div class="label">Opus codec errors:</div>
+          <div class="value">{data.opusStats.codecErrorCount}</div>
+        </div>
+      {/if}
+      {#if data.pcmStats}
+        <div class="entry">
+          <div class="label">PCM crc fail count:</div>
+          <div class="value">{data.pcmStats.crcFailCount}</div>
+        </div>
+      {/if}
       <div class="entry">
         <div class="label">sender OS jitter:</div>
         <div class="value">{data.encodeThreadJitterCount}</div>

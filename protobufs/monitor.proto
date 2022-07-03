@@ -8,13 +8,24 @@ message MonitorProto {
     float levelSlow = 3;
   }
 
+  message OpusStats {
+    uint32 codecErrorCount = 1;
+  }
+
+  message PCMStats {
+    uint32 crcFailCount = 1;
+  }
+
   message AudioStats {
     repeated AudioChannel audioChannel = 1;
     uint32 streamBufferPos = 2;
     uint32 bufferOverrunCount = 3;
     uint32 bufferUnderrunCount = 4;
-    uint32 codecErrorCount = 5;
-    uint32 encodeThreadJitterCount = 6;
+    uint32 encodeThreadJitterCount = 5;
+    oneof encoding {
+      OpusStats opusStats = 6;
+      PCMStats pcmStats = 7;
+    }
   }
 
   message EndpointStats {
@@ -31,8 +42,7 @@ message MonitorProto {
     uint32 dupBlockCount = 1;
     uint32 oooBlockCount = 2;
     repeated EndpointStats endpoint = 3;
-
-    oneof specificStats {
+    oneof contentStats {
       AudioStats audioStats = 4;
     }
   }

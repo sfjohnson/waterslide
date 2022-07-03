@@ -9,7 +9,7 @@ Realtime data transport with multihoming.
 - [x] Forward error correction (no waiting for packet re-transmissions)
 - [x] Works over the internet and on a LAN
 - [x] Multihoming
-- [ ] Lossless audio
+- [x] Lossless audio
 - [x] Multi-channel audio
 - [ ] Resampling to correct for clock drift between sender and receiver
 - [x] Encryption
@@ -142,7 +142,6 @@ npm start config.json
     "bitrate": 256000,
     "frameSize": 240,
     "maxPacketSize": 250,
-    "sampleRate": 48000,
     "decodeRingLength": 8192
   },
   "fec": {
@@ -187,7 +186,6 @@ npm start config.json
     "bitrate": 256000,
     "frameSize": 240,
     "maxPacketSize": 250,
-    "sampleRate": 48000,
     "decodeRingLength": 8192
   },
   "fec": {

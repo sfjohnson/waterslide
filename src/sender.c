@@ -15,17 +15,18 @@
 #include "mux.h"
 #include "raptorq/raptorq.h"
 #include "syncer.h"
+#include "pcm.h"
 
 #define UNUSED __attribute__((unused))
 
-static OpusMSEncoder *encoder;
-static uint8_t *opusEncodedBuf;
 static ck_ring_t encodeRing;
 static ck_ring_buffer_t *encodeRingBuf;
 static mux_transfer_t transfer;
-static float *opusFrameBuf;
 static int deviceChannelCount;
 static int targetEncodeRingSize;
+static int audioFrameSize;
+static int maxEncodedPacketSize;
+static double encodedSampleRate; // Hz
 
 // DEBUG: implement for Android
 #ifndef __ANDROID__
@@ -36,6 +37,27 @@ static int recordCallback (const void *inputBuffer, UNUSED void *outputBuffer, u
 }
 #endif
 
+static int initOpusEncoder (OpusMSEncoder **encoder) {
+  const int networkChannelCount = globals_get1i(audio, networkChannelCount);
+  unsigned char mapping[networkChannelCount];
+  for (int i = 0; i < networkChannelCount; i++) mapping[i] = i;
+
+  int err;
+  *encoder = opus_multistream_encoder_create(AUDIO_OPUS_SAMPLE_RATE, networkChannelCount, networkChannelCount, 0, mapping, OPUS_APPLICATION_AUDIO, &err);
+  if (err < 0) {
+    printf("Error: opus_multistream_encoder_create failed: %s\n", opus_strerror(err));
+    return -1;
+  }
+
+  err = opus_multistream_encoder_ctl(*encoder, OPUS_SET_BITRATE(globals_get1i(opus, bitrate)));
+  if (err < 0) {
+    printf("Error: opus_multistream_encoder_ctl failed: %s\n", opus_strerror(err));
+    return -2;
+  }
+
+  return 0;
+}
+
 static void *startEncodeThread (void *arg) {
   intptr_t secEnabled = (intptr_t)arg;
   int (*onPacketEmit)(const uint8_t *, int) = secEnabled ? endpointsec_send : endpoint_send;
@@ -43,19 +65,32 @@ static void *startEncodeThread (void *arg) {
   const int symbolLen = globals_get1i(fec, symbolLen);
   const int sourceSymbolsPerBlock = globals_get1i(fec, sourceSymbolsPerBlock);
   const int repairSymbolsPerBlock = globals_get1i(fec, repairSymbolsPerBlock);
-  const int fecBlockBaseLen = globals_get1i(fec, symbolLen) * sourceSymbolsPerBlock;
-  const int opusMaxPacketSize = globals_get1i(opus, maxPacketSize);
-  const int opusFrameSize = globals_get1i(opus, frameSize);
+  const int fecBlockBaseLen = symbolLen * sourceSymbolsPerBlock;
   const int networkChannelCount = globals_get1i(audio, networkChannelCount);
+  const unsigned int audioEncoding = globals_get1ui(audio, encoding);
 
   int fecBlockPos = 0;
   uint8_t fecSBN = 0;
 
   int fecEncodedBufLen = (4+symbolLen) * (sourceSymbolsPerBlock+repairSymbolsPerBlock);
-  uint8_t *fecBlockBuf = (uint8_t*)malloc(symbolLen*sourceSymbolsPerBlock + 2*opusMaxPacketSize);
+  uint8_t *fecBlockBuf = (uint8_t*)malloc(fecBlockBaseLen + 2*maxEncodedPacketSize);
   uint8_t *fecEncodedBuf = (uint8_t*)malloc(fecEncodedBufLen);
+  float *sampleBuf = (float*)malloc(4 * networkChannelCount * audioFrameSize);
+  uint8_t *audioEncodedBuf = (uint8_t*)malloc(maxEncodedPacketSize);
 
-  double targetSizeSeconds = (double)targetEncodeRingSize / (double)(networkChannelCount * globals_get1i(opus, sampleRate));
+  OpusMSEncoder *opusEncoder = NULL;
+  pcm_codec_t pcmEncoder = { 0 };
+
+  if (fecBlockBuf == NULL || fecEncodedBuf == NULL || sampleBuf == NULL || audioEncodedBuf == NULL) {
+    printf("Error: encode thread malloc failed.\n");
+    return NULL;
+  }
+
+  if (audioEncoding == AUDIO_ENCODING_OPUS) {
+    if (initOpusEncoder(&opusEncoder) < 0) return NULL;
+  }
+
+  double targetSizeSeconds = (double)targetEncodeRingSize / (double)(networkChannelCount * encodedSampleRate);
   // Sleep for shorter than targetSizeSeconds to make sure encodeRingSize doesn't get too full despite OS jitter.
   double sleepUs = 1000000.0 * 0.5 * targetSizeSeconds;
 
@@ -68,7 +103,7 @@ static void *startEncodeThread (void *arg) {
     int encodeRingSizeFrames = encodeRingSize / networkChannelCount;
     globals_set1ui(statsCh1Audio, streamBufferPos, encodeRingSizeFrames);
 
-    if (encodeRingSizeFrames < opusFrameSize) {
+    if (encodeRingSizeFrames < audioFrameSize) {
       usleep((useconds_t)sleepUs);
       continue;
     }
@@ -78,40 +113,37 @@ static void *startEncodeThread (void *arg) {
       globals_add1ui(statsCh1Audio, encodeThreadJitterCount, 1);
     }
 
-    for (int i = 0; i < networkChannelCount * opusFrameSize; i++) {
+    for (int i = 0; i < networkChannelCount * audioFrameSize; i++) {
       intptr_t outSample = 0;
       ck_ring_dequeue_spsc(&encodeRing, encodeRingBuf, &outSample);
       // https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#how-do-we-type-pun-correctly
-      memcpy(&opusFrameBuf[i], &outSample, 4);
+      memcpy(&sampleBuf[i], &outSample, 4);
     }
 
-    int encodedLen = opus_multistream_encode_float(encoder, opusFrameBuf, opusFrameSize, opusEncodedBuf, opusMaxPacketSize);
-    if (encodedLen < 0) {
-      globals_add1ui(statsCh1Audio, codecErrorCount, 1);
-      continue;
+    int encodedLen;
+    switch (audioEncoding) {
+      case AUDIO_ENCODING_OPUS:
+        encodedLen = opus_multistream_encode_float(opusEncoder, sampleBuf, audioFrameSize, audioEncodedBuf, maxEncodedPacketSize);
+        if (encodedLen < 0) {
+          globals_add1ui(statsCh1AudioOpus, codecErrorCount, 1);
+          continue;
+        }
+        break;
+
+      case AUDIO_ENCODING_PCM:
+        encodedLen = pcm_encode(&pcmEncoder, sampleBuf, networkChannelCount * audioFrameSize, audioEncodedBuf);
+        break;
     }
 
-    // SLIP encode opusEncodedBuf
-    for (int i = 0; i < encodedLen; i++) {
-      switch (opusEncodedBuf[i]) {
-        case 0xc0:
-          fecBlockBuf[fecBlockPos++] = 0xdb;
-          fecBlockBuf[fecBlockPos++] = 0xdc;
-          break;
-        case 0xdb:
-          fecBlockBuf[fecBlockPos++] = 0xdb;
-          fecBlockBuf[fecBlockPos++] = 0xdd;
-          break;
-        default:
-          fecBlockBuf[fecBlockPos++] = opusEncodedBuf[i];
-      }
-    }
-
-    // Add a terminating byte and more if necessary to pad the block to keep the data rate somewhat constant.
-    // DEBUG: fix up the receiver threading code so this isn't necessary.
+    fecBlockPos += utils_slipEncode(audioEncodedBuf, encodedLen, &fecBlockBuf[fecBlockPos]);
     fecBlockBuf[fecBlockPos++] = 0xc0;
-    for (int i = 0; i < opusMaxPacketSize/3 - encodedLen; i++) {
-      fecBlockBuf[fecBlockPos++] = 0xc0;
+
+    // Add more terminating bytes if necessary to pad the block to keep the data rate somewhat constant.
+    // DEBUG: fix up the receiver threading code so this isn't necessary.
+    if (audioEncoding == AUDIO_ENCODING_OPUS) {
+      for (int i = 0; i < maxEncodedPacketSize/3 - encodedLen; i++) {
+        fecBlockBuf[fecBlockPos++] = 0xc0;
+      }
     }
 
     if (fecBlockPos >= fecBlockBaseLen) {
@@ -140,18 +172,29 @@ static void *startEncodeThread (void *arg) {
 
 int sender_init () {
   #ifdef __ANDROID__
-  printf("Sender not implemented on Android, exiting...\n");
+  printf("Error: sender not implemented on Android, exiting...\n");
   return -100;
   #else
 
-  const int opusFrameSize = globals_get1i(opus, frameSize);
   const int networkChannelCount = globals_get1i(audio, networkChannelCount);
-  const int opusMaxPacketSize = globals_get1i(opus, maxPacketSize);
+  const unsigned int audioEncoding = globals_get1ui(audio, encoding);
 
-  opusFrameBuf = (float*)malloc(4 * networkChannelCount * opusFrameSize);
-  if (opusFrameBuf == NULL) return -1;
-  opusEncodedBuf = (uint8_t*)malloc(opusMaxPacketSize);
-  if (opusEncodedBuf == NULL) return -2;
+  switch (audioEncoding) {
+    case AUDIO_ENCODING_OPUS:
+      audioFrameSize = globals_get1i(opus, frameSize);
+      encodedSampleRate = AUDIO_OPUS_SAMPLE_RATE;
+      maxEncodedPacketSize = globals_get1i(opus, maxPacketSize);
+      break;
+    case AUDIO_ENCODING_PCM:
+      audioFrameSize = globals_get1i(pcm, frameSize);
+      encodedSampleRate = globals_get1i(pcm, sampleRate);
+      // 24-bit samples plus 2 bytes for CRC
+      maxEncodedPacketSize = 3 * networkChannelCount * audioFrameSize + 2;
+      break;
+    default:
+      printf("Error: Audio encoding %d not implemented.\n", audioEncoding);
+      return -1;
+  }
 
   if (mux_init() < 0) return -4;
   if (mux_initTransfer(&transfer) < 0) return -5;
@@ -179,28 +222,6 @@ int sender_init () {
       return -7;
     }
   }
-
-  unsigned char mapping[networkChannelCount];
-  for (int i = 0; i < networkChannelCount; i++) mapping[i] = i;
-
-  encoder = opus_multistream_encoder_create(globals_get1i(opus, sampleRate), networkChannelCount, networkChannelCount, 0, mapping, OPUS_APPLICATION_AUDIO, &err);
-  if (err < 0) {
-    printf("opus_multistream_encoder_create failed: %s\n", opus_strerror(err));
-    return -8;
-  }
-
-  err = opus_multistream_encoder_ctl(encoder, OPUS_SET_BITRATE(globals_get1i(opus, bitrate)));
-  if (err < 0) {
-    printf("opus_multistream_encoder_ctl failed: %s\n", opus_strerror(err));
-    return -9;
-  }
-
-  // https://twitter.com/marcan42/status/1264844348933369858
-  // err = opus_encoder_ctl(encoder, OPUS_SET_PHASE_INVERSION_DISABLED(1));
-  // if (err < 0) {
-  //   printf("opus_encoder_ctl failed: %s\n", opus_strerror(err));
-  //   return -9;
-  // }
 
   // DEBUG: move PortAudio stuff to audio module.
 
@@ -268,20 +289,19 @@ int sender_init () {
   const PaStreamInfo *streamInfo = Pa_GetStreamInfo(stream);
   double deviceLatency = streamInfo->inputLatency; // seconds
   double deviceSampleRate = streamInfo->sampleRate; // Hz
-  double opusSampleRate = globals_get1i(opus, sampleRate); // Hz
   // Set the ioSampleRate global in case PortAudio gave a different sample rate to the one requested.
   globals_set1i(audio, ioSampleRate, (int)deviceSampleRate);
   printf("Device latency (ms): %f\n", 1000.0 * deviceLatency);
   printf("Sample rate: %f\n", deviceSampleRate);
 
   // We want there to be about targetEncodeRingSize values in the encodeRing each time the encodeThread
-  // wakes from sleep. If the device latency is shorter than the Opus latency, the encodeThread can wait
-  // longer for there to be a full Opus frame in the encodeRing.
-  // NOTE: Each frame in encodeRing is 1/opusSampleRate seconds, not 1/deviceSampleRate seconds.
-  if (deviceLatency * opusSampleRate > opusFrameSize) {
-    targetEncodeRingSize = deviceLatency * opusSampleRate;
+  // wakes from sleep. If the device latency is shorter than the encoding latency, the encodeThread can wait
+  // longer for there to be a full frame in the encodeRing.
+  // NOTE: Each frame in encodeRing is 1/encodedSampleRate seconds, not 1/deviceSampleRate seconds.
+  if (deviceLatency * encodedSampleRate > audioFrameSize) {
+    targetEncodeRingSize = deviceLatency * encodedSampleRate;
   } else {
-    targetEncodeRingSize = opusFrameSize;
+    targetEncodeRingSize = audioFrameSize;
   }
   targetEncodeRingSize *= networkChannelCount;
 
@@ -299,7 +319,7 @@ int sender_init () {
 
   // Calculate the maximum value that framesPerBuffer could be in recordCallback, leaving plenty of spare room.
   int maxFramesPerBuffer = 3.0 * deviceLatency * deviceSampleRate;
-  if (syncer_init(deviceSampleRate, opusSampleRate, maxFramesPerBuffer, &encodeRing, encodeRingBuf, encodeRingMaxSize) < 0) return -18;
+  if (syncer_init(deviceSampleRate, encodedSampleRate, maxFramesPerBuffer, &encodeRing, encodeRingBuf, encodeRingMaxSize) < 0) return -18;
 
   pErr = Pa_StartStream(stream);
   if (pErr != paNoError) {

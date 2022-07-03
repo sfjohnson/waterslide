@@ -24,7 +24,6 @@ static endpoint_t *sockets = NULL; // length: endpointCount
 static pthread_t *recvThreads = NULL; // length: endpointCount
 static pthread_t tickThread;
 static atomic_bool threadsRunning = false;
-// static atomic_bool handshakeComplete = false;
 static struct wireguard_tunnel *tunnel = NULL;
 static int (*_onPacket)(const uint8_t*, int, int) = NULL;
 
@@ -73,9 +72,8 @@ static void wgRead (const uint8_t *buf, int bufLen, int epIndex) {
 
     switch (result.op) {
       case WIREGUARD_ERROR:
-        globals_set1uiv(statsEndpoints, open, epIndex, 0);
-        close(sockets[epIndex].socket);
-        sockets[epIndex].timeToReopen = ENDPOINT_REOPEN_INTERVAL;
+        // Multihoming will cause WireGuard errors due to dup packets.
+        // We are safe to ignore this.
         return;
 
       case WRITE_TO_TUNNEL_IPV4:
@@ -165,14 +163,6 @@ static void *tickLoop (UNUSED void *arg) {
   struct wireguard_result result;
 
   while (threadsRunning) {
-    // Check if handshake is complete
-    // struct stats wgStats = wireguard_stats(tunnel);
-    // if (wgStats.time_since_last_handshake >= 0) {
-    //   handshakeComplete = true;
-    // } else {
-    //   handshakeComplete = false;
-    // }
-
     for (int i = 0; i < endpointCount; i++) {
       if (sockets[i].timeToReopen == 1) {
         if (openSocket(i) < 0) {
@@ -254,9 +244,6 @@ int endpointsec_init (const char *privKey, const char *peerPubKey, int (*onPacke
 
 // NOTE: this function is not thread safe due to srcBuf and dstBuf being static.
 int endpointsec_send (const uint8_t *buf, int bufLen) {
-  // If handshake is not complete, drop buf to avoid flooding wireguard.
-  // if (!handshakeComplete) return 0;
-
   // This buffer starts with a fake IPv4 header that passes BoringTun's packet checks.
   static uint8_t srcBuf[1500] = { 0x45, 0x00, 0x00, 0x00 };
   static const int maxSrcDataLen = sizeof(srcBuf) - 20;

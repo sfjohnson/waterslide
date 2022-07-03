@@ -111,6 +111,26 @@ int utils_bindSocketToIf (int socket, const char *ifName, UNUSED int ifLen, int 
   return 0;
 }
 
+int utils_slipEncode (const uint8_t *inBuf, int inBufLen, uint8_t *outBuf) {
+  int outPos = 0;
+  for (int i = 0; i < inBufLen; i++) {
+    switch (inBuf[i]) {
+      case 0xc0:
+        outBuf[outPos++] = 0xdb;
+        outBuf[outPos++] = 0xdc;
+        break;
+      case 0xdb:
+        outBuf[outPos++] = 0xdb;
+        outBuf[outPos++] = 0xdd;
+        break;
+      default:
+        outBuf[outPos++] = inBuf[i];
+    }
+  }
+
+  return outPos;
+}
+
 int utils_encodeVarintU64 (uint8_t *buf, int len, uint64_t val) {
   int pos = 0;
 
@@ -186,6 +206,19 @@ int utils_writeU16LE (uint8_t *buf, uint16_t val) {
 // NOTE: this function is undefined for x = 0 or x = 1
 int utils_roundUpPowerOfTwo (unsigned int x) {
   return 1 << (1 + __builtin_clz(1) - __builtin_clz(x-1));
+}
+
+// Poly: 0x8005
+// https://stackoverflow.com/questions/10564491/function-to-calculate-a-crc16-checksum#comment83704063_10569892
+uint16_t utils_crc16 (uint16_t crc, const uint8_t *buf, int bufLen) {
+  while (bufLen--) {
+    crc ^= *buf++;
+    for (int k = 0; k < 8; k++) {
+      crc = crc & 1 ? (crc >> 1) ^ 0xa001 : crc >> 1;
+    }
+  }
+
+  return crc;
 }
 
 // Poly: 0x04C11DB7

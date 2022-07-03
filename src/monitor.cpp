@@ -94,9 +94,17 @@ static void *statsLoop (UNUSED void *arg) {
     }
     protoCh1->mutable_audiostats()->set_bufferoverruncount(globals_get1ui(statsCh1Audio, bufferOverrunCount));
     protoCh1->mutable_audiostats()->set_bufferunderruncount(globals_get1ui(statsCh1Audio, bufferUnderrunCount));
-    protoCh1->mutable_audiostats()->set_codecerrorcount(globals_get1ui(statsCh1Audio, codecErrorCount));
     protoCh1->mutable_audiostats()->set_streambufferpos(globals_get1ui(statsCh1Audio, streamBufferPos));
     protoCh1->mutable_audiostats()->set_encodethreadjittercount(globals_get1ui(statsCh1Audio, encodeThreadJitterCount));
+
+    switch (globals_get1ui(audio, encoding)) {
+      case AUDIO_ENCODING_OPUS:
+        protoCh1->mutable_audiostats()->mutable_opusstats()->set_codecerrorcount(globals_get1ui(statsCh1AudioOpus, codecErrorCount));
+        break;
+      case AUDIO_ENCODING_PCM:
+        protoCh1->mutable_audiostats()->mutable_pcmstats()->set_crcfailcount(globals_get1ui(statsCh1AudioPCM, crcFailCount));
+        break;
+    }
 
     std::string protoData;
     proto.SerializeToString(&protoData);

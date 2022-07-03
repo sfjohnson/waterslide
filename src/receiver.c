@@ -11,28 +11,46 @@
 #include "endpoint-secure.h"
 #include "audio.h"
 #include "utils.h"
+#include "pcm.h"
 
-static OpusMSDecoder *decoder;
+static OpusMSDecoder *decoder = NULL;
+static pcm_codec_t pcmDecoder = { 0 };
 static demux_channel_t channel1 = { 0 };
 static ck_ring_t decodeRing;
 static ck_ring_buffer_t *decodeRingBuf;
 static int sbnLast = -1;
 
+static unsigned int audioEncoding;
 static int networkChannelCount;
-static int opusMaxPacketSize, opusFrameSize, decodeRingMaxSize;
-static float *opusDecodedBuf;
-static uint8_t *opusEncodedBuf;
+static int maxEncodedPacketSize, audioFrameSize, decodeRingMaxSize;
+static float *sampleBuf;
+static uint8_t *audioEncodedBuf;
+static int audioEncodedBufPos = 0;
+static bool slipEsc = false;
 
-static void decodeOpusPacket (const uint8_t *buf, int len) {
+static void decodePacket (const uint8_t *buf, int len) {
   static bool overrun = false;
 
   int ringCurrentSize = ck_ring_size(&decodeRing);
   globals_set1ui(statsCh1Audio, streamBufferPos, ringCurrentSize / networkChannelCount);
 
-  int result = opus_multistream_decode_float(decoder, buf, len, opusDecodedBuf, opusFrameSize, 0);
-  if (result != opusFrameSize) {
-    globals_add1ui(statsCh1Audio, codecErrorCount, 1);
-    return;
+  int result;
+  switch (audioEncoding) {
+    case AUDIO_ENCODING_OPUS:
+      result = opus_multistream_decode_float(decoder, buf, len, sampleBuf, audioFrameSize, 0);
+      if (result != audioFrameSize) {
+        globals_add1ui(statsCh1AudioOpus, codecErrorCount, 1);
+        return;
+      }
+      break;
+
+    case AUDIO_ENCODING_PCM:
+      result = pcm_decode(&pcmDecoder, buf, len, sampleBuf);
+      if (result != networkChannelCount * audioFrameSize) {
+        if (result == -3) globals_add1ui(statsCh1AudioPCM, crcFailCount, 1);
+        return;
+      }
+      break;
   }
 
   if (overrun) {
@@ -44,13 +62,46 @@ static void decodeOpusPacket (const uint8_t *buf, int len) {
     }
   }
 
-  result = audio_enqueueBuf(opusDecodedBuf, opusFrameSize, networkChannelCount);
+  result = audio_enqueueBuf(sampleBuf, audioFrameSize, networkChannelCount);
   if (result == -2) overrun = true;
+}
+
+static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
+  for (int i = 0; i < bufLen; i++) {
+    if (slipEsc) {
+      if (buf[i] == 0xdc) {
+        if (audioEncodedBufPos >= maxEncodedPacketSize) return -1;
+        audioEncodedBuf[audioEncodedBufPos++] = 0xc0;
+      } else if (buf[i] == 0xdd) {
+        if (audioEncodedBufPos >= maxEncodedPacketSize) return -2;
+        audioEncodedBuf[audioEncodedBufPos++] = 0xdb;
+      } else {
+        return -3;
+      }
+      slipEsc = false;
+      continue;
+    }
+
+    if (buf[i] == 0xc0) {
+      if (audioEncodedBufPos == 0) continue;
+      decodePacket(audioEncodedBuf, audioEncodedBufPos);
+      audioEncodedBufPos = 0;
+      continue;
+    }
+
+    if (buf[i] == 0xdb) {
+      slipEsc = true;
+    } else {
+      if (audioEncodedBufPos >= maxEncodedPacketSize) return -4;
+      audioEncodedBuf[audioEncodedBufPos++] = buf[i];
+    }
+  }
+
+  return bufLen;
 }
 
 // The channel lock in the demux module protects the static variables accessed here
 static int onBlockCh1 (const uint8_t *buf, int sbn) {
-  static int opusEncodedBufPos = 0;
   // DEBUG: handle block loss
 
   int sbnDiff;
@@ -70,53 +121,45 @@ static int onBlockCh1 (const uint8_t *buf, int sbn) {
     globals_add1ui(statsCh1, oooBlockCount, 1);
   }
 
-  bool esc = false;
-  for (int i = 0; i < channel1.symbolsPerBlock * channel1.symbolLen; i++) {
-    if (buf[i] == 0xc0) {
-      if (opusEncodedBufPos == 0) continue;
-      decodeOpusPacket(opusEncodedBuf, opusEncodedBufPos);
-      opusEncodedBufPos = 0;
-      continue;
-    }
-
-    if (esc) {
-      if (buf[i] == 0xdc) {
-        if (opusEncodedBufPos >= opusMaxPacketSize) return -1;
-        opusEncodedBuf[opusEncodedBufPos++] = 0xc0;
-      } else if (buf[i] == 0xdd) {
-        if (opusEncodedBufPos >= opusMaxPacketSize) return -2;
-        opusEncodedBuf[opusEncodedBufPos++] = 0xdb;
-      } else {
-        // DEBUG: handle invalid SLIP
-      }
-      esc = false;
-      continue;
-    }
-
-    if (buf[i] == 0xdb) {
-      esc = true;
-    } else {
-      if (opusEncodedBufPos >= opusMaxPacketSize) return -3;
-      opusEncodedBuf[opusEncodedBufPos++] = buf[i];
-    }
+  int result = slipDecodeBlock(buf, channel1.symbolsPerBlock * channel1.symbolLen);
+  if (result < 0) {
+    audioEncodedBufPos = 0;
+    slipEsc = false;
   }
-
-  return 0;
+  return result;
 }
 
 int receiver_init () {
-  opusMaxPacketSize = globals_get1i(opus, maxPacketSize);
-  opusFrameSize = globals_get1i(opus, frameSize);
   networkChannelCount = globals_get1i(audio, networkChannelCount);
-  decodeRingMaxSize = networkChannelCount * globals_get1i(opus, decodeRingLength);
+  audioEncoding = globals_get1ui(audio, encoding);
+  int decodeRingLength;
+
+  switch (audioEncoding) {
+    case AUDIO_ENCODING_OPUS:
+      audioFrameSize = globals_get1i(opus, frameSize);
+      maxEncodedPacketSize = globals_get1i(opus, maxPacketSize);
+      decodeRingLength = globals_get1i(opus, decodeRingLength);
+      break;
+    case AUDIO_ENCODING_PCM:
+      audioFrameSize = globals_get1i(pcm, frameSize);
+      // 24-bit samples plus 2 bytes for CRC
+      maxEncodedPacketSize = 3 * networkChannelCount * audioFrameSize + 2;
+      decodeRingLength = globals_get1i(pcm, decodeRingLength);
+      break;
+    default:
+      printf("Error: Audio encoding %d not implemented.\n", audioEncoding);
+      return -1;
+  }
+
+  decodeRingMaxSize = networkChannelCount * decodeRingLength;
   // ck requires the size to be a power of two but we will pretend decodeRing contains
   // decodeRingMaxSize number of float values, and ignore the rest.
   int decodeRingAllocSize = utils_roundUpPowerOfTwo(decodeRingMaxSize);
 
-  opusDecodedBuf = (float*)malloc(4 * networkChannelCount * opusFrameSize);
-  if (opusDecodedBuf == NULL) return -1;
-  opusEncodedBuf = (uint8_t *)malloc(opusMaxPacketSize);
-  if (opusEncodedBuf == NULL) return -2;
+  sampleBuf = (float*)malloc(4 * networkChannelCount * audioFrameSize);
+  if (sampleBuf == NULL) return -1;
+  audioEncodedBuf = (uint8_t *)malloc(maxEncodedPacketSize);
+  if (audioEncodedBuf == NULL) return -2;
   decodeRingBuf = (ck_ring_buffer_t*)malloc(sizeof(ck_ring_buffer_t) * decodeRingAllocSize);
   if (decodeRingBuf == NULL) return -3;
   memset(decodeRingBuf, 0, sizeof(ck_ring_buffer_t) * decodeRingAllocSize);
@@ -129,22 +172,16 @@ int receiver_init () {
   channel1.onBlock = onBlockCh1;
   demux_addChannel(&channel1);
 
-  unsigned char mapping[networkChannelCount];
-  for (int i = 0; i < networkChannelCount; i++) mapping[i] = i;
-
   int err;
-  decoder = opus_multistream_decoder_create(globals_get1i(opus, sampleRate), networkChannelCount, networkChannelCount, 0, mapping, &err);
-  if (err < 0) {
-    printf("opus_multistream_decoder_create failed: %s\n", opus_strerror(err));
-    return -5;
+  if (audioEncoding == AUDIO_ENCODING_OPUS) {
+    unsigned char mapping[networkChannelCount];
+    for (int i = 0; i < networkChannelCount; i++) mapping[i] = i;
+    decoder = opus_multistream_decoder_create(AUDIO_OPUS_SAMPLE_RATE, networkChannelCount, networkChannelCount, 0, mapping, &err);
+    if (err < 0) {
+      printf("opus_multistream_decoder_create failed: %s\n", opus_strerror(err));
+      return -5;
+    }
   }
-
-  // https://twitter.com/marcan42/status/1264844348933369858
-  // err = opus_decoder_ctl(decoder, OPUS_SET_PHASE_INVERSION_DISABLED(1));
-  // if (err < 0) {
-  //   printf("opus_decoder_ctl failed: %s\n", opus_strerror(err));
-  //   return -6;
-  // }
 
   ck_ring_init(&decodeRing, decodeRingAllocSize);
   // half-fill ring buffer

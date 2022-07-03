@@ -145,11 +145,18 @@ int config_init (const char *b64ConfigStr) {
   globals_set1ff(audio, levelFastAttack, initConfig.audio().levelfastattack());
   globals_set1ff(audio, levelFastRelease, initConfig.audio().levelfastrelease());
 
-  globals_set1i(opus, bitrate, initConfig.opus().bitrate());
-  globals_set1i(opus, frameSize, initConfig.opus().framesize());
-  globals_set1i(opus, maxPacketSize, initConfig.opus().maxpacketsize());
-  globals_set1i(opus, sampleRate, initConfig.opus().samplerate());
-  globals_set1i(opus, decodeRingLength, initConfig.opus().decoderinglength());
+  if (initConfig.audio().has_opus()) {
+    globals_set1ui(audio, encoding, AUDIO_ENCODING_OPUS);
+    globals_set1i(opus, bitrate, initConfig.audio().opus().bitrate());
+    globals_set1i(opus, frameSize, initConfig.audio().opus().framesize());
+    globals_set1i(opus, maxPacketSize, initConfig.audio().opus().maxpacketsize());
+    globals_set1i(opus, decodeRingLength, initConfig.audio().opus().decoderinglength());
+  } else if (initConfig.audio().has_pcm()) {
+    globals_set1ui(audio, encoding, AUDIO_ENCODING_PCM);
+    globals_set1i(pcm, frameSize, initConfig.audio().pcm().framesize());
+    globals_set1i(pcm, sampleRate, initConfig.audio().pcm().samplerate());
+    globals_set1i(pcm, decodeRingLength, initConfig.audio().pcm().decoderinglength());
+  }
 
   globals_set1i(fec, symbolLen, initConfig.fec().symbollen());
   globals_set1i(fec, sourceSymbolsPerBlock, initConfig.fec().sourcesymbolsperblock());
