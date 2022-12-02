@@ -74,6 +74,7 @@ static void wgRead (const uint8_t *buf, int bufLen, int epIndex) {
       case WIREGUARD_ERROR:
         // Multihoming will cause WireGuard errors due to dup packets.
         // We are safe to ignore this.
+        // result.size == 11 is DuplicateCounter
         return;
 
       case WRITE_TO_TUNNEL_IPV4:
@@ -221,7 +222,7 @@ int endpointsec_init (const char *privKey, const char *peerPubKey, int (*onPacke
   }
 
   // Preshared keys are optional: https://www.procustodibus.com/blog/2021/09/wireguard-key-rotation/#preshared-keys
-  tunnel = new_tunnel(privKey, peerPubKey, NULL, SEC_KEEP_ALIVE_INTERVAL, 0, NULL, 0);
+  tunnel = new_tunnel(privKey, peerPubKey, NULL, SEC_KEEP_ALIVE_INTERVAL, 0);
   if (tunnel == NULL) return -20;
 
   // Set all the endpoints to open for stats
