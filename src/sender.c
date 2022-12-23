@@ -10,7 +10,6 @@
 #include "portaudio/portaudio.h"
 #include "ck/ck_ring.h"
 #include "globals.h"
-#include "endpoint.h"
 #include "endpoint-secure.h"
 #include "mux.h"
 #include "raptorq/raptorq.h"
@@ -58,10 +57,7 @@ static int initOpusEncoder (OpusMSEncoder **encoder) {
   return 0;
 }
 
-static void *startEncodeThread (void *arg) {
-  intptr_t secEnabled = (intptr_t)arg;
-  int (*onPacketEmit)(const uint8_t *, int) = secEnabled ? endpointsec_send : endpoint_send;
-
+static void *startEncodeThread (UNUSED void *arg) {
   const int symbolLen = globals_get1i(fec, symbolLen);
   const int sourceSymbolsPerBlock = globals_get1i(fec, sourceSymbolsPerBlock);
   const int repairSymbolsPerBlock = globals_get1i(fec, repairSymbolsPerBlock);
@@ -165,7 +161,7 @@ static void *startEncodeThread (void *arg) {
 
       mux_resetTransfer(&transfer);
       mux_setChannel(&transfer, 1, sourceSymbolsPerBlock + repairSymbolsPerBlock, 4 + symbolLen, fecEncodedBuf);
-      mux_emitPackets(&transfer, onPacketEmit);
+      mux_emitPackets(&transfer, endpointsec_send);
     }
   }
 }
@@ -201,26 +197,18 @@ int sender_init () {
 
   char privateKey[SEC_KEY_LENGTH + 1] = { 0 };
   char peerPublicKey[SEC_KEY_LENGTH + 1] = { 0 };
-  globals_get1s(endpoints, privateKey, privateKey, sizeof(privateKey));
-  globals_get1s(endpoints, peerPublicKey, peerPublicKey, sizeof(peerPublicKey));
+  globals_get1s(root, privateKey, privateKey, sizeof(privateKey));
+  globals_get1s(root, peerPublicKey, peerPublicKey, sizeof(peerPublicKey));
 
-  int err;
-  intptr_t secEnabled = 0;
-  if (strlen(privateKey) == SEC_KEY_LENGTH && strlen(peerPublicKey) == SEC_KEY_LENGTH) {
-    secEnabled = 1;
-    printf("*** Encryption enabled\n");
-    err = endpointsec_init(privateKey, peerPublicKey, NULL);
-    if (err < 0) {
-      printf("endpointsec_init error: %d\n", err);
-      return -6;
-    }
-  } else {
-    printf("*** Encryption disabled\n");
-    err = endpoint_init(NULL);
-    if (err < 0) {
-      printf("endpoint_init error: %d\n", err);
-      return -7;
-    }
+  if (strlen(privateKey) != SEC_KEY_LENGTH || strlen(peerPublicKey) != SEC_KEY_LENGTH) {
+    printf("Expected privateKey and peerPublicKey to be base64 x25519 keys.\n");
+    return -6;
+  }
+
+  int err = endpointsec_init(NULL);
+  if (err < 0) {
+    printf("endpointsec_init error: %d\n", err);
+    return -7;
   }
 
   // DEBUG: move PortAudio stuff to audio module.
@@ -228,18 +216,18 @@ int sender_init () {
   PaError pErr = Pa_Initialize();
   if (pErr != paNoError) {
     printf("Pa_Initialize error: %d\n", pErr);
-    return -10;
+    return -8;
   }
 
   int deviceCount = Pa_GetDeviceCount();
   if (deviceCount < 0) {
     printf("Pa_GetDeviceCount error: %d\n", deviceCount);
-    return -11;
+    return -9;
   }
 
   if (deviceCount == 0) {
     printf("No audio devices.\n");
-    return -12;
+    return -10;
   }
 
   char audioDeviceName[100] = { 0 };
@@ -254,13 +242,13 @@ int sender_init () {
       printf("Input device: %s\n", deviceInfo->name);
       if (deviceInfo->maxInputChannels == 0) {
         printf("No input channels.\n");
-        return -13;
+        return -11;
       }
       printf("Device channels: %d\n", deviceInfo->maxInputChannels);
       printf("Sender channels: %d\n", networkChannelCount);
       if (deviceInfo->maxInputChannels < networkChannelCount) {
         printf("Device does not have enough input channels.\n");
-        return -14;
+        return -12;
       }
       break;
     }
@@ -268,7 +256,7 @@ int sender_init () {
 
   if (deviceIndex == deviceCount) {
     printf("Audio device not found.\n");
-    return -15;
+    return -13;
   }
 
   deviceChannelCount = deviceInfo->maxInputChannels;
@@ -283,7 +271,7 @@ int sender_init () {
   pErr = Pa_OpenStream(&stream, &params, NULL, globals_get1i(audio, ioSampleRate), 0, 0, recordCallback, NULL);
   if (pErr != paNoError) {
     printf("Pa_OpenStream error: %d\n", pErr);
-    return -16;
+    return -14;
   }
 
   const PaStreamInfo *streamInfo = Pa_GetStreamInfo(stream);
@@ -313,25 +301,25 @@ int sender_init () {
   int encodeRingMaxSize = utils_roundUpPowerOfTwo(4 * targetEncodeRingSize);
 
   encodeRingBuf = (ck_ring_buffer_t*)malloc(sizeof(ck_ring_buffer_t) * encodeRingMaxSize);
-  if (encodeRingBuf == NULL) return -17;
+  if (encodeRingBuf == NULL) return -15;
   memset(encodeRingBuf, 0, sizeof(ck_ring_buffer_t) * encodeRingMaxSize);
   ck_ring_init(&encodeRing, encodeRingMaxSize);
 
   // Calculate the maximum value that framesPerBuffer could be in recordCallback, leaving plenty of spare room.
   int maxFramesPerBuffer = 3.0 * deviceLatency * deviceSampleRate;
-  if (syncer_init(deviceSampleRate, encodedSampleRate, maxFramesPerBuffer, &encodeRing, encodeRingBuf, encodeRingMaxSize) < 0) return -18;
+  if (syncer_init(deviceSampleRate, encodedSampleRate, maxFramesPerBuffer, &encodeRing, encodeRingBuf, encodeRingMaxSize) < 0) return -16;
 
   pErr = Pa_StartStream(stream);
   if (pErr != paNoError) {
     printf("Pa_StartStream error: %d\n", pErr);
-    return -19;
+    return -17;
   }
 
   pthread_t encodeThread;
-  err = pthread_create(&encodeThread, NULL, startEncodeThread, (void*)secEnabled);
+  err = pthread_create(&encodeThread, NULL, startEncodeThread, NULL);
   if (err != 0) {
     printf("pthread_create failed: %d\n", err);
-    return -20;
+    return -18;
   }
 
   return 0;

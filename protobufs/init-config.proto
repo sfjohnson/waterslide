@@ -7,10 +7,13 @@ message InitConfigProto {
     RECEIVER = 1;
   }
 
+  message Discovery {
+    bytes serverAddr = 1;
+    int32 serverPort = 2;
+  }
+
   message Endpoint {
     string interface = 1;
-    bytes addr = 2;
-    int32 port = 3;
   }
 
   message Mux {
@@ -61,11 +64,12 @@ message InitConfigProto {
   }
 
   Mode mode = 1;
-  repeated Endpoint endpoints = 2;
-  string privateKey = 3;
-  string peerPublicKey = 4;
-  Mux mux = 5;
-  Audio audio = 6;
-  Fec fec = 7;
-  Monitor monitor = 8;
+  Discovery discovery = 2;
+  repeated Endpoint endpoints = 3;
+  string privateKey = 4;
+  string peerPublicKey = 5;
+  Mux mux = 6;
+  Audio audio = 7;
+  Fec fec = 8;
+  Monitor monitor = 9;
 }

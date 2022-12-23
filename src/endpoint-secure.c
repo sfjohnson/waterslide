@@ -5,158 +5,41 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include "boringtun/wireguard_ffi.h"
 #include "globals.h"
 #include "utils.h"
-#include "boringtun/wireguard_ffi.h"
+#include "wsocket.h"
 #include "endpoint-secure.h"
 
-#define UNUSED __attribute__((unused))
+// DEBUG: log
+// #include <errno.h>
 
-// DEBUG: implement IPv6 support
-typedef struct {
-  atomic_int socket;
-  atomic_int timeToReopen;
-  atomic_uint_fast64_t packedSrcAddr; // port and address in one atomic var
-} endpoint_t;
+#define UNUSED __attribute__((unused))
+#define WG_READ_BUF_LEN 1500
 
 static int endpointCount = 0;
-static endpoint_t *sockets = NULL; // length: endpointCount
-static pthread_t *recvThreads = NULL; // length: endpointCount
+static wsocket_t *sockets = NULL; // length: endpointCount
+static pthread_t *discoveryThreads = NULL; // length: endpointCount
 static pthread_t tickThread;
 static atomic_bool threadsRunning = false;
 static struct wireguard_tunnel *tunnel = NULL;
+static uint8_t *wgReadBuf;
 static int (*_onPacket)(const uint8_t*, int, int) = NULL;
 
 static void sendBufToAll (const uint8_t *buf, int bufLen) {
+  int err;
   for (int i = 0; i < endpointCount; i++) {
-    if (sockets[i].timeToReopen > 0) continue;
-
-    ssize_t sentLen = bufLen;
-    if (_onPacket == NULL) {
-      // sender, we have already called connect
-      sentLen = send(sockets[i].socket, buf, bufLen, 0);
-    } else {
-      // receiver, use the most recent received source port and address
-      // If we have not received a packet yet, don't send anything
-      uint64_t packedSrcAddr = sockets[i].packedSrcAddr;
-      uint16_t srcPort = packedSrcAddr & 0xffff;
-      if (srcPort != 0) {
-        struct sockaddr_in srcSockaddr = { 0 };
-        srcSockaddr.sin_family = AF_INET;
-        srcSockaddr.sin_port = srcPort;
-        srcSockaddr.sin_addr.s_addr = packedSrcAddr >> 16;
-
-        sentLen = sendto(sockets[i].socket, buf, bufLen, 0, (struct sockaddr*)&srcSockaddr, sizeof(struct sockaddr_in));
-      }
-    }
-
-    if (sentLen != bufLen) {
-      // If send failed, close this socket and re-open on a timer
-      globals_set1uiv(statsEndpoints, open, i, 0);
-      close(sockets[i].socket);
-      sockets[i].timeToReopen = ENDPOINT_REOPEN_INTERVAL;
-    } else {
-      // Accounts for IP and UDP headers
-      // DEBUG: This assumes IPv4
-      globals_add1uiv(statsEndpoints, bytesOut, i, bufLen + 28);
-    }
-  }
-}
-
-static void wgRead (const uint8_t *buf, int bufLen, int epIndex) {
-  static uint8_t dstBuf[1500] = { 0 };
-  static struct wireguard_result result;
-
-  while (true) {
-    result = wireguard_read(tunnel, buf, bufLen, dstBuf, sizeof(dstBuf));
-
-    switch (result.op) {
-      case WIREGUARD_ERROR:
-        // Multihoming will cause WireGuard errors due to dup packets.
-        // We are safe to ignore this.
-        // result.size == 11 is DuplicateCounter
-        return;
-
-      case WRITE_TO_TUNNEL_IPV4:
-        if (result.size > 20 && _onPacket != NULL) {
-          _onPacket(dstBuf + 20, result.size - 20, epIndex);
-        }
-        return;
-
-      case WRITE_TO_NETWORK:
-        if (result.size > 0) sendBufToAll(dstBuf, result.size);
-        bufLen = 0;
-        break;
-
-      default:
-        return;
-    }
-  }
-}
-
-static void *recvLoop (void *arg) {
-  struct sockaddr_in srcSockaddr;
-  uint8_t recvBuf[1500] = { 0 };
-  intptr_t epIndex = (intptr_t)arg;
-
-  while (threadsRunning) {
-    if (sockets[epIndex].timeToReopen > 0) {
-      // If we can't receive, don't max out the CPU core waiting
-      usleep(ENDPOINT_TICK_INTERVAL);
+    err = wsocket_sendToPeer(&sockets[i], buf, bufLen);
+    if (err == -9) continue; // wsocket is not ready to send yet
+    if (err != 0) {
+      // DEBUG: send error, do something?
       continue;
     }
-
-    // Accepts packets from any source address
-    socklen_t srcAddrLen = sizeof(struct sockaddr_in);
-    ssize_t recvLen = recvfrom(sockets[epIndex].socket, recvBuf, sizeof(recvBuf), 0, (struct sockaddr*)&srcSockaddr, &srcAddrLen);
-
-    // If recv failed, close this socket and re-open on a timer
-    if (recvLen < 0) {
-      globals_set1uiv(statsEndpoints, open, epIndex, 0);
-      close(sockets[epIndex].socket);
-      sockets[epIndex].timeToReopen = ENDPOINT_REOPEN_INTERVAL;
-      continue;
-    }
-
-    // Pack source port and address and assign in one atomic operation
-    sockets[epIndex].packedSrcAddr = ((uint_fast64_t)srcSockaddr.sin_addr.s_addr << 16) | srcSockaddr.sin_port;
 
     // Accounts for IP and UDP headers
     // DEBUG: This assumes IPv4
-    globals_add1uiv(statsEndpoints, bytesIn, epIndex, recvLen + 28);
-
-    wgRead(recvBuf, recvLen, epIndex);
+    globals_add1uiv(statsEndpoints, bytesOut, i, bufLen + 28);
   }
-
-  return NULL;
-}
-
-static int openSocket (int epIndex) {
-  int err;
-
-  sockets[epIndex].socket = socket(AF_INET, SOCK_DGRAM, 0);
-  if (sockets[epIndex].socket < 0) return -1;
-
-  char ifName[MAX_NET_IF_NAME_LEN + 1] = { 0 };
-  int ifLen = globals_get1sv(endpoints, interface, epIndex, ifName, sizeof(ifName));
-  if (ifLen > 0) {
-    // If we are a sender don't bind to port
-    int port = _onPacket == NULL ? -1 : globals_get1iv(endpoints, port, epIndex);
-    err = utils_bindSocketToIf(sockets[epIndex].socket, ifName, ifLen, port);
-    if (err < 0) return err - 1;
-  }
-
-  if (_onPacket == NULL) {
-    // sender
-    struct sockaddr_in connectAddrStruct = { 0 };
-    connectAddrStruct.sin_family = AF_INET;
-    connectAddrStruct.sin_port = htons(globals_get1iv(endpoints, port, epIndex));
-    connectAddrStruct.sin_addr.s_addr = globals_get1uiv(endpoints, addr, epIndex);
-    err = connect(sockets[epIndex].socket, (struct sockaddr*)&connectAddrStruct, sizeof(struct sockaddr_in));
-    if (err < 0) return -10;
-  }
-
-  return 0;
 }
 
 static void *tickLoop (UNUSED void *arg) {
@@ -164,19 +47,19 @@ static void *tickLoop (UNUSED void *arg) {
   struct wireguard_result result;
 
   while (threadsRunning) {
-    for (int i = 0; i < endpointCount; i++) {
-      if (sockets[i].timeToReopen == 1) {
-        if (openSocket(i) < 0) {
-          sockets[i].timeToReopen = ENDPOINT_REOPEN_INTERVAL;
-        } else {
-          sockets[i].packedSrcAddr = 0;
-          sockets[i].timeToReopen = 0;
-          globals_set1uiv(statsEndpoints, open, i, 1);
-        }
-      } else if (sockets[i].timeToReopen > 1) {
-        sockets[i].timeToReopen--;
-      }
-    }
+    // for (int i = 0; i < endpointCount; i++) {
+    //   if (sockets[i].timeToReopen == 1) {
+    //     if (openSocket(i) < 0) {
+    //       sockets[i].timeToReopen = ENDPOINT_REOPEN_INTERVAL;
+    //     } else {
+    //       sockets[i].packedSrcAddr = 0;
+    //       sockets[i].timeToReopen = 0;
+    //       globals_set1uiv(statsEndpoints, open, i, 1);
+    //     }
+    //   } else if (sockets[i].timeToReopen > 1) {
+    //     sockets[i].timeToReopen--;
+    //   }
+    // }
 
     result = wireguard_tick(tunnel, tickBuf, sizeof(tickBuf));
     if (result.op == WRITE_TO_NETWORK) sendBufToAll(tickBuf, result.size);
@@ -187,43 +70,97 @@ static void *tickLoop (UNUSED void *arg) {
   return NULL;
 }
 
-int endpointsec_init (const char *privKey, const char *peerPubKey, int (*onPacket)(const uint8_t*, int, int)) {
-  int err;
-  _onPacket = onPacket;
+static int onPeerPacket (const uint8_t *buf, int bufLen, int epIndex) {
+  // Accounts for IP and UDP headers
+  // DEBUG: This assumes IPv4
+  globals_add1uiv(statsEndpoints, bytesIn, epIndex, bufLen + 28);
+
+  // Use a slice of wgReadBuf so multiple receive threads aren't fighting over the same memory.
+  uint8_t *dstBuf = &wgReadBuf[WG_READ_BUF_LEN * epIndex];
+  while (true) {
+    struct wireguard_result result = wireguard_read(tunnel, buf, bufLen, dstBuf, WG_READ_BUF_LEN);
+
+    switch (result.op) {
+      case WIREGUARD_ERROR:
+        // Multihoming will cause WireGuard errors due to dup packets.
+        // We are safe to ignore this.
+        // DEBUG: log
+        if (result.size != 11) { // DuplicateCounter
+          printf("wg error: %zu\n", result.size);
+        }
+        return 0;
+
+      case WRITE_TO_TUNNEL_IPV4:
+        if (result.size > 20 && _onPacket != NULL) {
+          _onPacket(dstBuf + 20, result.size - 20, epIndex);
+        }
+        return 0;
+
+      case WRITE_TO_NETWORK:
+        if (result.size > 0) sendBufToAll(dstBuf, result.size);
+        bufLen = 0;
+        break;
+
+      default:
+        return 0;
+    }
+  }
+
+  return 0;
+}
+
+static void *startDiscovery (void *arg) {
+  intptr_t epIndex = (intptr_t)arg;
+  wsocket_waitForPeerAddr(&sockets[epIndex]);
+  // DEBUG: log
+  printf("(epIndex %ld) got peer addr\n", epIndex);
+  wsocket_waitForFirstReceivedPacket(&sockets[epIndex]);
+  // DEBUG: log
+  printf("(epIndex %ld) got first packet\n", epIndex);
+
+  return NULL;
+}
+
+int endpointsec_init (int (*onPacket)(const uint8_t*, int, int)) {
   endpointCount = globals_get1i(endpoints, endpointCount);
-  sockets = (endpoint_t*)malloc(sizeof(endpoint_t) * endpointCount);
-  recvThreads = (pthread_t*)malloc(sizeof(pthread_t) * endpointCount);
-
-  memset(sockets, 0, sizeof(endpoint_t) * endpointCount);
-
-  // Check endpoints are configured correctly
   if (endpointCount == 0) {
     printf("Endpoint: No endpoints specified!\n");
     return -1;
   }
 
-  if (endpointCount > 1) {
-    printf("*** Multihoming enabled\n");
-    for (int i = 0; i < endpointCount; i++) {
-      char ifName[MAX_NET_IF_NAME_LEN + 1] = { 0 };
-      int ifLen = globals_get1sv(endpoints, interface, i, ifName, sizeof(ifName));
-      if (ifLen <= 0) {
-        printf("Endpoint: In multihoming mode, all endpoints must have an interface specified!\n");
-        return -2;
-      }
-    }
-  } else {
-    printf("*** Multihoming disabled\n");
-  }
+  int err;
+  _onPacket = onPacket;
+  sockets = (wsocket_t *)malloc(sizeof(wsocket_t) * endpointCount);
+  discoveryThreads = (pthread_t *)malloc(sizeof(pthread_t) * endpointCount);
+  wgReadBuf = (uint8_t *)malloc(WG_READ_BUF_LEN * endpointCount);
 
+  memset(sockets, 0, sizeof(wsocket_t) * endpointCount);
+
+  char privKeyStr[SEC_KEY_LENGTH + 1] = { 0 };
+  char peerPubKeyStr[SEC_KEY_LENGTH + 1] = { 0 };
+  globals_get1s(root, privateKey, privKeyStr, sizeof(privKeyStr));
+  globals_get1s(root, peerPublicKey, peerPubKeyStr, sizeof(peerPubKeyStr));
+
+  struct x25519_key myPrivKey = { 0 };
+  struct x25519_key peerPubKey = { 0 };
+  err = utils_x25519Base64ToBuf(myPrivKey.key, privKeyStr);
+  if (err != 0) return -2;
+  err = utils_x25519Base64ToBuf(peerPubKey.key, peerPubKeyStr);
+  if (err != 0) return -3;
+
+  struct x25519_key myPubKey = x25519_public_key(myPrivKey);
+
+  char ifName[MAX_NET_IF_NAME_LEN + 1] = { 0 };
   for (int i = 0; i < endpointCount; i++) {
-    err = openSocket(i);
-    if (err < 0) return err - 2;
+    int ifLen = globals_get1sv(endpoints, interface, i, ifName, sizeof(ifName));
+    if (ifLen <= 0) return -4;
+    err = wsocket_init (&sockets[i], myPubKey.key, peerPubKey.key, i, ifName, ifLen, onPeerPacket);
+    if (err < 0) return err - 4;
   }
 
   // Preshared keys are optional: https://www.procustodibus.com/blog/2021/09/wireguard-key-rotation/#preshared-keys
-  tunnel = new_tunnel(privKey, peerPubKey, NULL, SEC_KEEP_ALIVE_INTERVAL, 0);
-  if (tunnel == NULL) return -20;
+  tunnel = new_tunnel(privKeyStr, peerPubKeyStr, NULL, SEC_KEEP_ALIVE_INTERVAL, 0);
+  if (tunnel == NULL) return -15;
 
   // Set all the endpoints to open for stats
   for (int i = 0; i < endpointCount; i++) {
@@ -233,11 +170,11 @@ int endpointsec_init (const char *privKey, const char *peerPubKey, int (*onPacke
   threadsRunning = true;
 
   err = pthread_create(&tickThread, NULL, tickLoop, NULL);
-  if (err != 0) return -21;
+  if (err != 0) return -16;
 
   for (intptr_t i = 0; i < endpointCount; i++) {
-    err = pthread_create(&recvThreads[i], NULL, recvLoop, (void*)i);
-    if (err != 0) return -22;
+    err = pthread_create(&discoveryThreads[i], NULL, startDiscovery, (void*)i);
+    if (err != 0) return -17;
   }
 
   return 0;
@@ -271,13 +208,14 @@ int endpointsec_send (const uint8_t *buf, int bufLen) {
 void endpointsec_deinit () {
   if (tunnel != NULL) tunnel_free(tunnel);
 
-  if (threadsRunning) {
-    threadsRunning = false;
-    pthread_join(tickThread, NULL);
-    for (int i = 0; i < endpointCount; i++) {
-      pthread_join(recvThreads[i], NULL);
-      close(sockets[i].socket);
-    }
-    free(sockets);
-  }
+  // TODO
+  // if (threadsRunning) {
+  //   threadsRunning = false;
+  //   pthread_join(tickThread, NULL);
+  //   for (int i = 0; i < endpointCount; i++) {
+  //     pthread_join(recvThreads[i], NULL);
+  //     close(sockets[i].socket);
+  //   }
+  //   free(sockets);
+  // }
 }

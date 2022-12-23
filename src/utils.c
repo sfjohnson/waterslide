@@ -4,6 +4,7 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <stdio.h>
+#include "boringtun/wireguard_ffi.h"
 #include "utils.h"
 
 #if defined(__MACH__)
@@ -35,79 +36,6 @@ int utils_setCallerThreadPrioHigh () {
   if (kr != KERN_SUCCESS) return -2;
   #endif
 
-  return 0;
-}
-
-int utils_bindSocketToIf (int socket, const char *ifName, UNUSED int ifLen, int port) {
-  int err;
-  #if defined(__ANDROID__) || defined(__linux__)
-  err = setsockopt(socket, SOL_SOCKET, SO_BINDTODEVICE, ifName, ifLen);
-  if (err < 0) {
-    printf("Endpoint: interface bind failed. CAP_NET_RAW or root are required!\n");
-    return -1;
-  }
-  #elif defined(__MACH__)
-  int ifIndex = if_nametoindex(ifName);
-  if (ifIndex == 0) {
-    printf("Endpoint: interface not found!\n");
-    return -2;
-  }
-  err = setsockopt(socket, IPPROTO_IP, IP_BOUND_IF, &ifIndex, sizeof(ifIndex));
-  if (err < 0) {
-    printf("Endpoint: interface bind failed!\n");
-    return -3;
-  }
-  #else
-  printf("Endpoint: interface bind failed, this OS is not supported!\n");
-  return -4;
-  #endif
-
-  if (port < 0) {
-    printf("Bound to interface %.*s\n", ifLen, ifName);
-    return 0;
-  }
-
-  bool bound = false;
-  struct ifaddrs *ifList;
-  err = getifaddrs(&ifList);
-  if (err < 0) return -5;
-  struct ifaddrs *currentIf = ifList;
-  while (currentIf != NULL) {
-    if (currentIf->ifa_addr == NULL || strcmp(currentIf->ifa_name, ifName) != 0) {
-      currentIf = currentIf->ifa_next;
-      continue;
-    }
-
-    if (currentIf->ifa_addr->sa_family == AF_INET) {
-      struct sockaddr_in *foundAddr = (struct sockaddr_in *)currentIf->ifa_addr;
-      uint32_t addrBytes = foundAddr->sin_addr.s_addr;
-      foundAddr->sin_port = htons(port);
-
-      err = bind(socket, (struct sockaddr*)foundAddr, sizeof(struct sockaddr_in));
-      if (err < 0) {
-        freeifaddrs(ifList);
-        return -6;
-      }
-
-      printf("Bound to %d.%d.%d.%d:%d on interface %s\n", addrBytes & 0xff, (addrBytes>>8) & 0xff, (addrBytes>>16) & 0xff, addrBytes >> 24, port, ifName);
-      bound = true;
-      break;
-    } else if (currentIf->ifa_addr->sa_family == AF_INET6) {
-      // TODO: IPv6
-      // uint8_t *addr = ((struct sockaddr_in6 *)currentIf->ifa_addr)->sin6_addr.s6_addr;
-      // printf("* %s, ", currentIf->ifa_name);
-      // for (int i = 0; i < 16; i += 2) {
-      //   printf("%02x%02x", addr[i], addr[i+1]);
-      //   if (i != 14) printf(":");
-      // }
-      // printf("\n");
-    }
-
-    currentIf = currentIf->ifa_next;
-  }
-
-  freeifaddrs(ifList);
-  if (!bound) return -8;
   return 0;
 }
 
@@ -206,6 +134,42 @@ int utils_writeU16LE (uint8_t *buf, uint16_t val) {
 // NOTE: this function is undefined for x = 0 or x = 1
 int utils_roundUpPowerOfTwo (unsigned int x) {
   return 1 << (1 + __builtin_clz(1) - __builtin_clz(x-1));
+}
+
+// https://stackoverflow.com/a/37109258
+static const int b64Index[256] = {
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  62, 63, 62, 62, 63,
+  52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0,  0,  0,  0,  0,  0,
+  0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
+  15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 0,  0,  0,  0,  63,
+  0,  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+  41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51
+};
+
+int utils_x25519Base64ToBuf (uint8_t *keyBuf, const char *keyStr) {
+  if (check_base64_encoded_x25519_key(keyStr) == 0) return -1;
+
+  int n, pos = 0;
+  const unsigned char *s = (unsigned char *)keyStr;
+
+  for (int i = 0; i < 40; i += 4) {
+    n = b64Index[s[i]] << 18 |
+      b64Index[s[i+1]] << 12 |
+      b64Index[s[i+2]] << 6 |
+      b64Index[s[i+3]];
+    keyBuf[pos++] = n >> 16;
+    keyBuf[pos++] = (n >> 8) & 0xff;
+    keyBuf[pos++] = n & 0xff;
+  }
+
+  n = b64Index[s[40]] << 18 | b64Index[s[41]] << 12;
+  keyBuf[pos++] = n >> 16;
+  n |= b64Index[s[42]] << 6;
+  keyBuf[pos++] = (n >> 8) & 0xff;
+
+  return 0;
 }
 
 // Poly: 0x8005

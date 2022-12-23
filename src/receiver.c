@@ -7,7 +7,6 @@
 #include "ck/ck_ring.h"
 #include "globals.h"
 #include "demux.h"
-#include "endpoint.h"
 #include "endpoint-secure.h"
 #include "audio.h"
 #include "utils.h"
@@ -198,23 +197,18 @@ int receiver_init () {
 
   char privateKey[SEC_KEY_LENGTH + 1] = { 0 };
   char peerPublicKey[SEC_KEY_LENGTH + 1] = { 0 };
-  globals_get1s(endpoints, privateKey, privateKey, sizeof(privateKey));
-  globals_get1s(endpoints, peerPublicKey, peerPublicKey, sizeof(peerPublicKey));
+  globals_get1s(root, privateKey, privateKey, sizeof(privateKey));
+  globals_get1s(root, peerPublicKey, peerPublicKey, sizeof(peerPublicKey));
 
-  if (strlen(privateKey) == SEC_KEY_LENGTH && strlen(peerPublicKey) == SEC_KEY_LENGTH) {
-    printf("*** Encryption enabled\n");
-    err = endpointsec_init(privateKey, peerPublicKey, demux_readPacket);
-    if (err < 0) {
-      printf("endpointsec_init error: %d\n", err);
-      return -9;
-    }
-  } else {
-    printf("*** Encryption disabled\n");
-    err = endpoint_init(demux_readPacket);
-    if (err < 0) {
-      printf("endpoint_init error: %d\n", err);
-      return -10;
-    }
+  if (strlen(privateKey) != SEC_KEY_LENGTH || strlen(peerPublicKey) != SEC_KEY_LENGTH) {
+    printf("Expected privateKey and peerPublicKey to be base64 x25519 keys.\n");
+    return -9;
+  }
+
+  err = endpointsec_init(demux_readPacket);
+  if (err < 0) {
+    printf("endpointsec_init error: %d\n", err);
+    return -10;
   }
 
   return 0;

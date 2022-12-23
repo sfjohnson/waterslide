@@ -16,13 +16,14 @@
 #define ENDPOINT_REOPEN_INTERVAL 20 // in ticks (1 tick = 100 ms)
 
 globals_declare1i(root, mode)
+globals_declare1s(root, privateKey)
+globals_declare1s(root, peerPublicKey)
 
-globals_declare1s(endpoints, privateKey)
-globals_declare1s(endpoints, peerPublicKey)
+globals_declare1ui(discovery, serverAddr)
+globals_declare1i(discovery, serverPort)
+
 globals_declare1i(endpoints, endpointCount)
 globals_declare1sv(endpoints, interface)
-globals_declare1uiv(endpoints, addr)
-globals_declare1iv(endpoints, port)
 
 globals_declare1i(mux, maxChannels)
 globals_declare1i(mux, maxPacketSize)

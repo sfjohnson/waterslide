@@ -1,13 +1,14 @@
 #include "globals.h"
 
 globals_define1i(root, mode)
+globals_define1s(root, privateKey, SEC_KEY_LENGTH)
+globals_define1s(root, peerPublicKey, SEC_KEY_LENGTH)
 
-globals_define1s(endpoints, privateKey, SEC_KEY_LENGTH)
-globals_define1s(endpoints, peerPublicKey, SEC_KEY_LENGTH)
+globals_define1ui(discovery, serverAddr)
+globals_define1i(discovery, serverPort)
+
 globals_define1i(endpoints, endpointCount)
 globals_define1sv(endpoints, interface, MAX_ENDPOINTS, MAX_NET_IF_NAME_LEN)
-globals_define1uiv(endpoints, addr, MAX_ENDPOINTS)
-globals_define1iv(endpoints, port, MAX_ENDPOINTS)
 
 globals_define1i(mux, maxChannels)
 globals_define1i(mux, maxPacketSize)

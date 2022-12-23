@@ -86,8 +86,6 @@ int config_init (const char *b64ConfigStr) {
   initConfig.ParseFromArray(buf, bufLen);
   free(buf);
 
-  globals_set1i(root, mode, initConfig.mode());
-
   // Validate fields with static limits
 
   int endpointCount = initConfig.endpoints_size();
@@ -103,36 +101,31 @@ int config_init (const char *b64ConfigStr) {
   }
 
   // Transfer protobuf to global store
+  globals_set1i(root, mode, initConfig.mode());
+  globals_set1s(root, privateKey, initConfig.privatekey().c_str());
+  globals_set1s(root, peerPublicKey, initConfig.peerpublickey().c_str());
+
+  size_t serverAddrLen = initConfig.discovery().serveraddr().length();
+  const uint8_t *serverAddrBuf = (const uint8_t*)initConfig.discovery().serveraddr().c_str();
+  if (serverAddrLen == 4) {
+    // IPv4
+    uint32_t serverAddrVal = 0;
+    memcpy(&serverAddrVal, serverAddrBuf, 4);
+    globals_set1ui(discovery, serverAddr, serverAddrVal);
+  } else if (serverAddrLen == 16) {
+    // IPv6
+    printf("Init config: IPv6 is not implemented!\n");
+    return -3;
+  }
+
+  globals_set1i(discovery, serverPort, initConfig.discovery().serverport());
 
   for (int i = 0; i < endpointCount; i++) {
     const InitConfigProto_Endpoint &endpoint = initConfig.endpoints(i);
-    size_t addrLen = endpoint.addr().length();
-    const uint8_t *addrBuf = (const uint8_t*)endpoint.addr().c_str();
-
-    if (addrLen == 4) {
-      // IPv4
-      uint32_t addrVal = 0;
-      memcpy(&addrVal, addrBuf, 4);
-      globals_set1uiv(endpoints, addr, i, addrVal);
-      // printf("%u.%u.%u.%u:%d\n", addrBuf[3], addrBuf[2], addrBuf[1], addrBuf[0], endpoint.port());
-    } else if (addrLen == 16) {
-      // IPv6
-      printf("Init config: IPv6 is not implemented!\n");
-      return -3;
-    } else if (initConfig.mode() == 0) {
-      // If we are a sender, an address is required.
-      printf("Init config: Invalid endpoint addr length!\n");
-      return -4;
-    }
-
     globals_set1sv(endpoints, interface, i, endpoint.interface().c_str());
-    globals_set1iv(endpoints, port, i, endpoint.port());
   }
 
   globals_set1i(endpoints, endpointCount, endpointCount);
-
-  globals_set1s(endpoints, privateKey, initConfig.privatekey().c_str());
-  globals_set1s(endpoints, peerPublicKey, initConfig.peerpublickey().c_str());
 
   globals_set1i(mux, maxChannels, initConfig.mux().maxchannels());
   globals_set1i(mux, maxPacketSize, initConfig.mux().maxpacketsize());
