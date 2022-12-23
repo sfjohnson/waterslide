@@ -2,7 +2,7 @@
   import AudioSection from './AudioSection.svelte'
   import BlocksSection from './BlocksSection.svelte'
   import EndpointsSection from './EndpointsSection.svelte'
-  import protobuf from 'protobufjs'
+  import protobuf from 'protobufjs/dist/protobuf.min'
 
   const wsServerAddr = 'ws://localhost:7681'
 
