@@ -41,13 +41,14 @@ download () {
   fi
 }
 
+rm -rf lib/$ARCH lib/android30 include/deps
 mkdir -p bin lib/$ARCH lib/android30 licenses
 
 download all     v21.12.0     protobuf         libprotobuf-lite
 download all     v0.7.16      ck               libck
 download android v1.6.3       oboe             liboboe
 download macos   v19.7.4      portaudio        libportaudio
-download all     v6.2.1       r8brain-free-src libr8brain
+download all     v6.2.2       r8brain-free-src libr8brain
 download all     v1.4.10      opus             libopus
 download all     v1.7.12      raptorq          libraptorq
 download all     v19.7.14     uWebSockets      libuwebsockets
