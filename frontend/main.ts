@@ -4,6 +4,7 @@ import protobuf from 'protobufjs'
 import { promises as fsp } from 'fs'
 import url from 'url'
 import path from 'path'
+import os from 'os'
 
 const app = express()
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
@@ -14,17 +15,22 @@ if (process.argv.length < 3) {
 }
 
 let binPath = path.join(__dirname, '../../bin/waterslide')
-switch (process.platform) {
-  case 'darwin':
+const platformAndArch = `${os.platform()}-${os.arch()}`
+switch (platformAndArch) {
+  case 'darwin-arm64':
+    binPath += '-macos-arm64'
+    break
+
+  case 'darwin-x64':
     binPath += '-macos10'
     break
 
-  case 'android':
+  case 'android-arm64':
     binPath += '-android30'
     break
 
   default:
-    console.log(`Unsupported platform: ${process.platform}`)
+    console.log(`Unsupported platform: ${platformAndArch}`)
     process.exit(1)
 }
 

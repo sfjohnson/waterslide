@@ -26,7 +26,7 @@ Realtime data transport with multihoming.
 - [x] macOS x64
 - [x] Android (receiver)
 - [ ] Android (sender)
-- [ ] macOS ARM
+- [x] macOS ARM
 - [ ] Raspberry Pi
 
 ## Setup (common)
@@ -99,6 +99,7 @@ Processing, sending and receiving data is handled by the binary made by the `mak
 
 ```sh
 cd frontend
+npm ci
 npm run build
 ```
 
@@ -135,16 +136,16 @@ npm start config.json
     "channelCount": 2,
     "ioSampleRate": 44100,
     "deviceName": "Soundflower (2ch)",
+    "opus": {
+      "bitrate": 256000,
+      "frameSize": 240,
+      "maxPacketSize": 250,
+      "decodeRingLength": 8192
+    },
     "levelSlowAttack": 0.004,
     "levelSlowRelease": 0.0008,
     "levelFastAttack": 0.31,
     "levelFastRelease": 0.00003
-  },
-  "opus": {
-    "bitrate": 256000,
-    "frameSize": 240,
-    "maxPacketSize": 250,
-    "decodeRingLength": 8192
   },
   "fec": {
     "symbolLen": 256,
@@ -181,16 +182,16 @@ npm start config.json
     "channelCount": 2,
     "ioSampleRate": 44100,
     "deviceName": "Built-in Output",
+    "opus": {
+      "bitrate": 256000,
+      "frameSize": 240,
+      "maxPacketSize": 250,
+      "decodeRingLength": 8192
+    },
     "levelSlowAttack": 0.004,
     "levelSlowRelease": 0.0008,
     "levelFastAttack": 0.31,
     "levelFastRelease": 0.00003
-  },
-  "opus": {
-    "bitrate": 256000,
-    "frameSize": 240,
-    "maxPacketSize": 250,
-    "decodeRingLength": 8192
   },
   "fec": {
     "symbolLen": 256,
