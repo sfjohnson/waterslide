@@ -10,7 +10,7 @@ extern "C" {
 
 int syncer_init (double srcRate, double dstRate, int maxInBufFrames, ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize);
 
-// NOTE: this is not thread-safe
+// NOTE: this should only be called from one thread (not thread-safe).
 int syncer_enqueueBuf (const float *inBuf, int inFrameCount, int inChannelCount);
 
 void syncer_deinit ();
