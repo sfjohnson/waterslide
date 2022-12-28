@@ -19,7 +19,7 @@ typedef struct {
   uint64_t chId;
   // symbolLen must be: 64, 128, 256, 512 or 1024
   int symbolsPerBlock, symbolLen;
-  int (*onBlock)(const uint8_t *, int);
+  void (*onBlock)(const uint8_t *, int);
   // private
   pthread_mutex_t _lock;
   uint8_t *_blockBuf;

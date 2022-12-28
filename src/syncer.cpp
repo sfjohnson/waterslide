@@ -42,6 +42,7 @@ int syncer_init (double srcRate, double dstRate, int maxInBufFrames, ck_ring_t *
 }
 
 // NOTE: this should only be called from one thread (not thread-safe). This must be audio callback safe (no syscalls).
+// returns: number of audio frames added to ring (after resampling), or negative error code
 int syncer_enqueueBuf (const float *inBuf, int inFrameCount, int inChannelCount) {
   int lastOutBufLen = -1;
   for (int i = 0; i < networkChannelCount; i++) {
@@ -74,7 +75,7 @@ int syncer_enqueueBuf (const float *inBuf, int inFrameCount, int inChannelCount)
     }
   }
 
-  return 0;
+  return lastOutBufLen;
 }
 
 void syncer_deinit () {

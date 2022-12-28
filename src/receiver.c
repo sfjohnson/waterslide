@@ -27,7 +27,8 @@ static uint8_t *audioEncodedBuf;
 static int audioEncodedBufPos = 0;
 static bool slipEsc = false;
 
-static void decodePacket (const uint8_t *buf, int len) {
+// returns: number of audio frames added to decodeRing (after resampling), or negative error code
+static int decodePacket (const uint8_t *buf, int len) {
   static bool overrun = false;
 
   int ringCurrentSize = ck_ring_size(&decodeRing);
@@ -39,7 +40,7 @@ static void decodePacket (const uint8_t *buf, int len) {
       result = opus_multistream_decode_float(decoder, buf, len, sampleBuf, audioFrameSize, 0);
       if (result != audioFrameSize) {
         globals_add1ui(statsCh1AudioOpus, codecErrorCount, 1);
-        return;
+        return -1;
       }
       break;
 
@@ -47,7 +48,7 @@ static void decodePacket (const uint8_t *buf, int len) {
       result = pcm_decode(&pcmDecoder, buf, len, sampleBuf);
       if (result != networkChannelCount * audioFrameSize) {
         if (result == -3) globals_add1ui(statsCh1AudioPCM, crcFailCount, 1);
-        return;
+        return -2;
       }
       break;
   }
@@ -55,7 +56,7 @@ static void decodePacket (const uint8_t *buf, int len) {
   if (overrun) {
     // Let the audio callback empty the ring to about half-way before pushing to it again.
     if (ringCurrentSize > decodeRingMaxSize / 2) {
-      return;
+      return 0;
     } else {
       overrun = false;
     }
@@ -63,6 +64,24 @@ static void decodePacket (const uint8_t *buf, int len) {
 
   result = audio_enqueueBuf(sampleBuf, audioFrameSize, networkChannelCount);
   if (result == -2) overrun = true;
+
+  return result;
+}
+
+static int enqueueSilence (int frameCount) {
+  if (frameCount < 0) return -1;
+
+  int totalSamples = networkChannelCount * frameCount;
+  // Don't ever let the ring fill completely, that way the channels stay in order
+  if ((int)ck_ring_size(&decodeRing) + totalSamples > decodeRingMaxSize) {
+    return -2;
+  }
+
+  for (int i = 0; i < totalSamples; i++) {
+    ck_ring_enqueue_spsc(&decodeRing, decodeRingBuf, (void*)0);
+  }
+
+  return frameCount;
 }
 
 static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
@@ -100,7 +119,9 @@ static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
 }
 
 // The channel lock in the demux module protects the static variables accessed here
-static int onBlockCh1 (const uint8_t *buf, int sbn) {
+static void onBlockCh1 (const uint8_t *buf, int sbn) {
+  bool tryDecode = true;
+
   if (sbnLast != -1) {
     int sbnDiff;
     if (sbnLast - sbn > 128) {
@@ -111,21 +132,33 @@ static int onBlockCh1 (const uint8_t *buf, int sbn) {
     }
 
     if (sbnDiff == 0) {
+      // Duplicate block, ignore
       globals_add1ui(statsCh1, dupBlockCount, 1);
-    } else if (sbnDiff != 1) {
-      // DEBUG: tell syncer we lost a block
+      tryDecode = false;
+    } else if (sbnDiff < 0) {
+      // Out-of-order old block, ignore
       globals_add1ui(statsCh1, oooBlockCount, 1);
+      tryDecode = false;
+    } else if (sbnDiff > 1) {
+      int blockDroppedCount = sbnDiff - 1;
+      // Out-of-order, previous block(s) were dropped
+      globals_add1ui(statsCh1, oooBlockCount, blockDroppedCount);
+      audioEncodedBufPos = 0;
+      slipEsc = false;
+      tryDecode = false;
     }
   }
 
   sbnLast = sbn;
+
+  // Don't bother SLIP decoding duplicate or out-of-order blocks
+  if (!tryDecode) return;
 
   int result = slipDecodeBlock(buf, channel1.symbolsPerBlock * channel1.symbolLen);
   if (result < 0) {
     audioEncodedBufPos = 0;
     slipEsc = false;
   }
-  return result;
 }
 
 int receiver_init () {
@@ -184,10 +217,7 @@ int receiver_init () {
 
   ck_ring_init(&decodeRing, decodeRingAllocSize);
   // half-fill ring buffer
-  for (int i = 0; i < decodeRingMaxSize / 2; i++) {
-    intptr_t inFrame = 0;
-    ck_ring_enqueue_spsc(&decodeRing, decodeRingBuf, (void*)inFrame);
-  }
+  enqueueSilence(decodeRingLength / 2);
 
   if (audio_init(&decodeRing, decodeRingBuf, decodeRingMaxSize) < 0) return -7;
 
