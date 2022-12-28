@@ -9,6 +9,7 @@
 #include "demux.h"
 #include "endpoint-secure.h"
 #include "audio.h"
+#include "syncer.h"
 #include "utils.h"
 #include "pcm.h"
 
@@ -62,7 +63,7 @@ static int decodePacket (const uint8_t *buf, int len) {
     }
   }
 
-  result = audio_enqueueBuf(sampleBuf, audioFrameSize, networkChannelCount);
+  result = syncer_enqueueBuf(sampleBuf, audioFrameSize, networkChannelCount);
   if (result == -2) overrun = true;
 
   return result;
@@ -165,14 +166,17 @@ int receiver_init () {
   networkChannelCount = globals_get1i(audio, networkChannelCount);
   audioEncoding = globals_get1ui(audio, encoding);
   int decodeRingLength;
+  double encodedSampleRate; // Hz
 
   switch (audioEncoding) {
     case AUDIO_ENCODING_OPUS:
+      encodedSampleRate = AUDIO_OPUS_SAMPLE_RATE;
       audioFrameSize = globals_get1i(opus, frameSize);
       maxEncodedPacketSize = globals_get1i(opus, maxPacketSize);
       decodeRingLength = globals_get1i(opus, decodeRingLength);
       break;
     case AUDIO_ENCODING_PCM:
+      encodedSampleRate = globals_get1i(pcm, sampleRate);
       audioFrameSize = globals_get1i(pcm, frameSize);
       // 24-bit samples plus 2 bytes for CRC
       maxEncodedPacketSize = 3 * networkChannelCount * audioFrameSize + 2;
@@ -219,11 +223,18 @@ int receiver_init () {
   // half-fill ring buffer
   enqueueSilence(decodeRingLength / 2);
 
-  if (audio_init(&decodeRing, decodeRingBuf, decodeRingMaxSize) < 0) return -7;
+  if (audio_init(&decodeRing, decodeRingBuf, decodeRingMaxSize) < 0) return -6;
 
   char audioDeviceName[MAX_DEVICE_NAME_LEN + 1] = { 0 };
   globals_get1s(audio, deviceName, audioDeviceName, sizeof(audioDeviceName));
-  if (audio_start(audioDeviceName) < 0) return -8;
+  if (audio_start(audioDeviceName) < 0) return -7;
+
+  double ioSampleRate = globals_get1i(audio, ioSampleRate);
+  err = syncer_init(encodedSampleRate, ioSampleRate, audioFrameSize, &decodeRing, decodeRingBuf, decodeRingMaxSize);
+  if (err < 0) {
+    printf("syncer_init error: %d\n", err);
+    return -8;
+  }
 
   char privateKey[SEC_KEY_LENGTH + 1] = { 0 };
   char peerPublicKey[SEC_KEY_LENGTH + 1] = { 0 };

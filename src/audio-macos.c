@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <math.h>
 #include "portaudio/portaudio.h"
-#include "syncer.h"
 #include "globals.h"
 #include "audio.h"
 
@@ -11,7 +10,6 @@ static ck_ring_t *_ring;
 static ck_ring_buffer_t *_ringBuf;
 static int _fullRingSize;
 static int networkChannelCount, deviceChannelCount, ringMaxSize, audioFrameSize;
-static double encodedSampleRate; // Hz
 static double levelFastAttack, levelFastRelease;
 static double levelSlowAttack, levelSlowRelease;
 
@@ -97,12 +95,10 @@ int audio_init (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize) {
   switch (audioEncoding) {
     case AUDIO_ENCODING_OPUS:
       audioFrameSize = globals_get1i(opus, frameSize);
-      encodedSampleRate = AUDIO_OPUS_SAMPLE_RATE;
       decodeRingLength = globals_get1i(opus, decodeRingLength);
       break;
     case AUDIO_ENCODING_PCM:
       audioFrameSize = globals_get1i(pcm, frameSize);
-      encodedSampleRate = globals_get1i(pcm, sampleRate);
       decodeRingLength = globals_get1i(pcm, decodeRingLength);
       break;
     default:
@@ -202,12 +198,6 @@ int audio_start (const char *audioDeviceName) {
   printf("Device latency (ms): %f\n", 1000.0 * deviceLatency);
   printf("Sample rate: %f\n", deviceSampleRate);
 
-  int err = syncer_init(encodedSampleRate, deviceSampleRate, audioFrameSize, _ring, _ringBuf, _fullRingSize);
-  if (err < 0) {
-    printf("syncer_init error: %d\n", err);
-    return -6;
-  }
-
   pErr = Pa_StartStream(stream);
   if (pErr != paNoError) {
     printf("Pa_StartStream error: %d, %s\n", pErr, Pa_GetErrorText(pErr));
@@ -215,8 +205,4 @@ int audio_start (const char *audioDeviceName) {
   }
 
   return 0;
-}
-
-int audio_enqueueBuf (const float *inBuf, int inFrameCount, int inChannelCount) {
-  return syncer_enqueueBuf(inBuf, inFrameCount, inChannelCount);
 }

@@ -280,7 +280,7 @@ int sender_init () {
   // Set the ioSampleRate global in case PortAudio gave a different sample rate to the one requested.
   globals_set1i(audio, ioSampleRate, (int)deviceSampleRate);
   printf("Device latency (ms): %f\n", 1000.0 * deviceLatency);
-  printf("Sample rate: %f\n", deviceSampleRate);
+  printf("Device sample rate: %f\n", deviceSampleRate);
 
   // We want there to be about targetEncodeRingSize values in the encodeRing each time the encodeThread
   // wakes from sleep. If the device latency is shorter than the encoding latency, the encodeThread can wait
