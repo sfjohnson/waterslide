@@ -1,4 +1,5 @@
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -112,11 +113,11 @@ static int onPeerPacket (const uint8_t *buf, int bufLen, int epIndex) {
 static void *startDiscovery (void *arg) {
   intptr_t epIndex = (intptr_t)arg;
   wsocket_waitForPeerAddr(&sockets[epIndex]);
+
   // DEBUG: log
-  printf("(epIndex %ld) got peer addr\n", epIndex);
-  wsocket_waitForFirstReceivedPacket(&sockets[epIndex]);
-  // DEBUG: log
-  printf("(epIndex %ld) got first packet\n", epIndex);
+  char addrString[15] = { 0 };
+  inet_ntop(AF_INET, &sockets[epIndex].peerAddr, addrString, sizeof(addrString));
+  printf("(epIndex %ld) got peer addr %s:%d\n", epIndex, addrString, ntohs(sockets[epIndex].peerPort));
 
   return NULL;
 }

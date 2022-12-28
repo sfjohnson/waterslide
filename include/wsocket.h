@@ -3,7 +3,7 @@
 #include <stdatomic.h>
 #include <pthread.h>
 
-enum wsocket_state { Idle, GotPeerAddr, GotFirstPacket };
+enum wsocket_state { Idle, GotPeerAddr };
 
 typedef struct {
   int sock;
@@ -34,7 +34,5 @@ int wsocket_init (wsocket_t *sock, const uint8_t *myPubKey, const uint8_t *peerP
 // serverPort: server destination port
 // returns: 0 for success, negative for error code
 int wsocket_waitForPeerAddr (wsocket_t *sock);
-
-int wsocket_waitForFirstReceivedPacket (wsocket_t *sock);
 
 int wsocket_sendToPeer (const wsocket_t *sock, const uint8_t *buf, int bufLen);

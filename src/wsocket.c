@@ -31,10 +31,6 @@ static void handleRes (wsocket_t *sock, uint8_t *buf, ssize_t len) {
       break;
 
     case GotPeerAddr:
-      if (len > 0) sock->state = GotFirstPacket;
-      break;
-
-    case GotFirstPacket:
       sock->onPacket(buf, len, sock->epIndex);
       break;
   }
@@ -77,12 +73,10 @@ const char *wsocket_getErrorStr (int returnCode) {
     case -6:
       return "wsocket_init: pthread_create() failed";
     case -7:
-      return "wsocket_waitForDiscovery: invalid wsocket state";
+      return "wsocket_waitForPeerAddr: invalid wsocket state";
     case -8:
-      return "wsocket_waitForFirstReceivedPacket: invalid wsocket state";
-    case -9:
       return "wsocket_sendToPeer: invalid wsocket state";
-    case -10:
+    case -9:
       return "wsocket_sendToPeer: sendto() failed";
     default:
       return "wsocket_init: unknown error code";
@@ -146,32 +140,15 @@ int wsocket_waitForPeerAddr (wsocket_t *sock) {
   return 0;
 }
 
-int wsocket_waitForFirstReceivedPacket (wsocket_t *sock) {
+int wsocket_sendToPeer (const wsocket_t *sock, const uint8_t *buf, int bufLen) {
   if (sock->state != GotPeerAddr) return -8;
 
   struct sockaddr_in peerAddr = { 0 };
   peerAddr.sin_family = AF_INET;
   peerAddr.sin_addr.s_addr = sock->peerAddr;
   peerAddr.sin_port = sock->peerPort;
-
-  while (sock->state != GotFirstPacket) {
-    uint8_t sendBuf = (uint8_t)sock->epIndex;
-    sendto(sock->sock, &sendBuf, 1, 0, (struct sockaddr*)&peerAddr, sizeof(peerAddr));
-    usleep(500000);
-  }
-
-  return 0;
-}
-
-int wsocket_sendToPeer (const wsocket_t *sock, const uint8_t *buf, int bufLen) {
-  if (sock->state != GotFirstPacket) return -9;
-
-  struct sockaddr_in peerAddr = { 0 };
-  peerAddr.sin_family = AF_INET;
-  peerAddr.sin_addr.s_addr = sock->peerAddr;
-  peerAddr.sin_port = sock->peerPort;
   ssize_t err = sendto(sock->sock, buf, bufLen, 0, (struct sockaddr*)&peerAddr, sizeof(peerAddr));
-  if (err != bufLen) return -10;
+  if (err != bufLen) return -9;
 
   return 0;
 }
