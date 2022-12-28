@@ -101,24 +101,24 @@ static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
 
 // The channel lock in the demux module protects the static variables accessed here
 static int onBlockCh1 (const uint8_t *buf, int sbn) {
-  // DEBUG: handle block loss
+  if (sbnLast != -1) {
+    int sbnDiff;
+    if (sbnLast - sbn > 128) {
+      // Overflow
+      sbnDiff = 256 - sbnLast + sbn;
+    } else {
+      sbnDiff = sbn - sbnLast;
+    }
 
-  int sbnDiff;
-  if (sbnLast == -1) {
-    sbnDiff = 0;
-  } else if (sbnLast - sbn > 220) { // DEBUG: why 220?
-    // Overflow
-    sbnDiff = 256 - sbnLast + sbn;
-  } else {
-    sbnDiff = sbn - sbnLast;
+    if (sbnDiff == 0) {
+      globals_add1ui(statsCh1, dupBlockCount, 1);
+    } else if (sbnDiff != 1) {
+      // DEBUG: tell syncer we lost a block
+      globals_add1ui(statsCh1, oooBlockCount, 1);
+    }
   }
+
   sbnLast = sbn;
-
-  if (sbnDiff == 0) {
-    globals_add1ui(statsCh1, dupBlockCount, 1);
-  } else if (sbnDiff < 0 || sbnDiff > 1) {
-    globals_add1ui(statsCh1, oooBlockCount, 1);
-  }
 
   int result = slipDecodeBlock(buf, channel1.symbolsPerBlock * channel1.symbolLen);
   if (result < 0) {

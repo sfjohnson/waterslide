@@ -60,22 +60,24 @@ int demux_readPacket (const uint8_t *buf, int bufLen, int endpointIndex) {
     pos += len;
 
     // The packet sequence number is just for stats. The RaptorQ Payload ID is the actual important one.
-    int seqDiff;
     int seqLast = endpointsSeqLast[endpointIndex];
-    if (seqLast == -1) {
-      seqDiff = 0;
-    } else if (seqLast - seq > 65000) { // DEBUG: why 65000?
-      // Overflow
-      seqDiff = 65536 - seqLast + seq;
-    } else {
-      seqDiff = seq - seqLast;
+    if (seqLast != -1) {
+      int seqDiff;
+      if (seqLast - seq > 32768) {
+        // Overflow
+        seqDiff = 65536 - seqLast + seq;
+      } else {
+        seqDiff = seq - seqLast;
+      }
+
+      if (seqDiff == 0) {
+        globals_add1uiv(statsEndpoints, dupPacketCount, endpointIndex, 1);
+      } else if (seqDiff != 1) {
+        globals_add1uiv(statsEndpoints, oooPacketCount, endpointIndex, 1);
+      }
     }
+
     endpointsSeqLast[endpointIndex] = seq;
-    if (seqDiff == 0) {
-      globals_add1uiv(statsEndpoints, dupPacketCount, endpointIndex, 1);
-    } else if (seqDiff < 0 || seqDiff > 1) {
-      globals_add1uiv(statsEndpoints, oooPacketCount, endpointIndex, 1);
-    }
 
     if (pos + chunkLen > bufLen) return -7;
 
