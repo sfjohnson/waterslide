@@ -69,6 +69,10 @@ static void *startEncodeThread (UNUSED void *arg) {
   uint8_t fecSBN = 0;
 
   int fecEncodedBufLen = (4+symbolLen) * (sourceSymbolsPerBlock+repairSymbolsPerBlock);
+  // fecBlockBuf maximum possible length:
+  //   fecBlockBaseLen - 1 (once the length is >= fecBlockBaseLen, block(s) are sent)
+  // + 2*maxEncodedPacketSize (assuming worst-case scenario of every byte being a SLIP escape sequence)
+  // + 1 (for 0xc0)
   uint8_t *fecBlockBuf = (uint8_t*)malloc(fecBlockBaseLen + 2*maxEncodedPacketSize);
   uint8_t *fecEncodedBuf = (uint8_t*)malloc(fecEncodedBufLen);
   float *sampleBuf = (float*)malloc(4 * networkChannelCount * audioFrameSize);
@@ -142,7 +146,7 @@ static void *startEncodeThread (UNUSED void *arg) {
       }
     }
 
-    if (fecBlockPos >= fecBlockBaseLen) {
+    while (fecBlockPos >= fecBlockBaseLen) {
       int fecEncodedLen = raptorq_encodeBlock(
         fecSBN++,
         fecBlockBuf,

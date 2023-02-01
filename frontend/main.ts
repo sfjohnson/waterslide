@@ -47,7 +47,7 @@ const configString = (initConfigProto.encode(configFile).finish() as Buffer).toS
 const waterslide = spawn(binPath, [configString])
 waterslide.stdout.pipe(process.stdout)
 waterslide.stderr.pipe(process.stderr)
-waterslide.on('close', (code) => {
+waterslide.on('close', (_, code) => {
   console.log(`Child process exited with code ${code}`);
 })
 
