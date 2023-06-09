@@ -7,7 +7,7 @@
 static uint8_t *packetBuf;
 static int maxChannels, maxPacketSize;
 
-int mux_init () {
+int mux_init (void) {
   maxChannels = globals_get1i(mux, maxChannels);
   maxPacketSize = globals_get1i(mux, maxPacketSize);
   packetBuf = (uint8_t*)malloc(maxPacketSize);

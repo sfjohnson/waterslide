@@ -13,7 +13,7 @@ static int chCount = 0;
 static int maxChannels, maxPacketSize;
 static atomic_int *endpointsSeqLast;
 
-int demux_init () {
+int demux_init (void) {
   maxChannels = globals_get1i(mux, maxChannels);
   maxPacketSize = globals_get1i(mux, maxPacketSize);
   channels = (demux_channel_t*)malloc(sizeof(demux_channel_t) * maxChannels);

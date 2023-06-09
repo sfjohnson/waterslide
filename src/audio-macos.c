@@ -2,60 +2,61 @@
 #include <math.h>
 #include "portaudio/portaudio.h"
 #include "globals.h"
+#include "utils.h"
+#include "syncer.h"
 #include "audio.h"
 
 #define UNUSED __attribute__((unused))
 
+static PaStream *stream = NULL;
 static ck_ring_t *_ring;
 static ck_ring_buffer_t *_ringBuf;
 static int _fullRingSize;
-static int networkChannelCount, deviceChannelCount, ringMaxSize, audioFrameSize;
-static double levelFastAttack, levelFastRelease;
-static double levelSlowAttack, levelSlowRelease;
+static bool _receiver;
+static int networkChannelCount, deviceChannelCount;
+static unsigned int audioEncoding;
+static double deviceLatency = 0.0;
 
-// DEBUG: change to float not double?
-// NOTE: this must be audio callback safe.
-static void setAudioStats (double sample, int channel) {
-  if (sample >= 1.0 || sample <= -1.0) {
-    globals_add1uiv(statsCh1Audio, clippingCounts, channel, 1);
-  }
+// https://www.dsprelated.com/showarticle/814.php
+// x: 5-element array { x[n], x[n-1], x[n-2], x[n-3], x[n-4] }
+// static double differentiator (const double *x) {
+//   return (3.0f/16.0f) * (x[4] - x[0]) + (31.0f/32.0f) * (x[1] - x[3]);
+// }
 
-  double levelFast, levelSlow;
-  globals_get1ffv(statsCh1Audio, levelsFast, channel, &levelFast);
-  globals_get1ffv(statsCh1Audio, levelsSlow, channel, &levelSlow);
-
-  double levelFastDiff = fabs(sample) - levelFast;
-  double levelSlowDiff = fabs(sample) - levelSlow;
-
-  if (levelFastDiff > 0) {
-    levelFast += levelFastAttack * levelFastDiff;
-  } else {
-    levelFast += levelFastRelease * levelFastDiff;
-  }
-  if (levelSlowDiff > 0) {
-    levelSlow += levelSlowAttack * levelSlowDiff;
-  } else {
-    levelSlow += levelSlowRelease * levelSlowDiff;
-  }
-
-  globals_set1ffv(statsCh1Audio, levelsFast, channel, levelFast);
-  globals_set1ffv(statsCh1Audio, levelsSlow, channel, levelSlow);
-}
-
+// This is the high-priority audio thread for receiver
 static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, UNUSED const PaStreamCallbackTimeInfo* timeInfo, UNUSED PaStreamCallbackFlags statusFlags, UNUSED void *userData) {
-  static bool underrun = false;
-  float *outBuf = (float *)outputBuffer;
+  static bool underrun = true;
+  float *outBufFloat = (float *)outputBuffer;
   int ringCurrentSize = ck_ring_size(_ring);
-  // This condition is ensured in audio_start: outBufFloatCount >= ringFloatCount
+  // This condition is ensured in audio_init: outBufFloatCount >= ringFloatCount
   int outBufFrameCount = (int)framesPerBuffer;
   int outBufFloatCount = deviceChannelCount * outBufFrameCount;
   int ringFloatCount = networkChannelCount * outBufFrameCount;
 
-  memset(outBuf, 0, 4 * outBufFloatCount);
+  memset(outBufFloat, 0, 4 * outBufFloatCount);
+
+  globals_add1i(audio, receiverSync, -outBufFrameCount);
+
+  // DEBUG: test
+  // static double receiverSyncDiff[5] = { 0.0 };
+  // static float receiverSyncFiltLpf1 = 0.0f;
+  // static double receiverSyncFiltLpf2 = 0.0;
+
+  // receiverSyncFiltLpf1 += 0.001f * ((float)globals_get1i(audio, receiverSync) - receiverSyncFiltLpf1);
+
+  // for (int i = 4; i >= 1; i--) {
+  //   receiverSyncDiff[i] = receiverSyncDiff[i - 1];
+  // }
+  // receiverSyncDiff[0] = (double)globals_get1i(audio, receiverSync);
+  // double receiverSyncD = (double)globals_get1i(audio, receiverSync);
+  // receiverSyncFiltLpf2 += 0.0005 * (differentiator(receiverSyncDiff) - receiverSyncFiltLpf2);
+  // globals_set1ff(audio, receiverSyncFilt, receiverSyncD);
+
+  // globals_set1uiv(statsEndpoints, bytesOut, 0, (unsigned int)(-10000000.0f*receiverSyncFiltLpf2));
 
   if (underrun) {
     // Let the ring fill up to about half-way before pulling from it again, while outputting silence.
-    if (ringCurrentSize < ringMaxSize / 2) {
+    if (ringCurrentSize < _fullRingSize / 2) {
       return paContinue;
     } else {
       underrun = false;
@@ -71,138 +72,186 @@ static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, uns
 
   for (int i = 0; i < outBufFrameCount; i++) {
     for (int j = 0; j < networkChannelCount; j++) {
-      // If networkChannelCount < deviceChannelCount, don't write to the remaining channels in outBuf,
+      // If networkChannelCount < deviceChannelCount, don't write to the remaining channels in outBufFloat,
       // they are already set to zero above.
       intptr_t outSample = 0;
-      float outSampleFloat;
+      double outSampleDouble;
       ck_ring_dequeue_spsc(_ring, _ringBuf, &outSample);
       // https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#how-do-we-type-pun-correctly
-      memcpy(&outSampleFloat, &outSample, 4);
-      outBuf[deviceChannelCount*i + j] = outSampleFloat;
-
-      // setAudioStats will detect clipping and tell the user
-      setAudioStats(outSampleFloat, j);
+      memcpy(&outSampleDouble, &outSample, 8);
+      // Setting stats here instead of in syncer_enqueueBuf allows us to see silence from underruns on the audio level monitor.
+      outBufFloat[deviceChannelCount*i + j] = outSampleDouble;
+      utils_setAudioStats(outSampleDouble, j);
     }
   }
 
   return paContinue;
 }
 
-int audio_init (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize) {
-  unsigned int audioEncoding = globals_get1ui(audio, encoding);
-  int decodeRingLength;
-
+// This is the high-priority audio thread for sender
+static int recordCallback (const void *inputBuffer, UNUSED void *outputBuffer, unsigned long framesPerBuffer, UNUSED const PaStreamCallbackTimeInfo* timeInfo, UNUSED PaStreamCallbackFlags statusFlags, UNUSED void *userData) {
+  const float *inBufFloat = (const float *)inputBuffer;
+  
   switch (audioEncoding) {
     case AUDIO_ENCODING_OPUS:
-      audioFrameSize = globals_get1i(opus, frameSize);
-      decodeRingLength = globals_get1i(opus, decodeRingLength);
+      syncer_enqueueBufF32(inBufFloat, framesPerBuffer, deviceChannelCount, true, -1);
       break;
+
     case AUDIO_ENCODING_PCM:
-      audioFrameSize = globals_get1i(pcm, frameSize);
-      decodeRingLength = globals_get1i(pcm, decodeRingLength);
+      for (unsigned long i = 0; i < framesPerBuffer; i++) {
+        for (int j = 0; j < networkChannelCount; j++) {
+          intptr_t inSample = 0;
+          double inSampleDouble = inBufFloat[deviceChannelCount*i + j];
+          memcpy(&inSample, &inSampleDouble, 8);
+          ck_ring_enqueue_spsc(_ring, _ringBuf, (void*)inSample);
+          utils_setAudioStats(inSampleDouble, j);
+        }
+      }
       break;
-    default:
-      return -1;
   }
 
-  _ring = ring;
-  _ringBuf = ringBuf;
-  _fullRingSize = fullRingSize;
+  return paContinue;
+}
+
+int audio_init (bool receiver) {
+  _receiver = receiver;
   networkChannelCount = globals_get1i(audio, networkChannelCount);
-  ringMaxSize = networkChannelCount * decodeRingLength;
+  audioEncoding = globals_get1ui(audio, encoding);
 
-  globals_get1ff(audio, levelFastAttack, &levelFastAttack);
-  globals_get1ff(audio, levelFastRelease, &levelFastRelease);
-  globals_get1ff(audio, levelSlowAttack, &levelSlowAttack);
-  globals_get1ff(audio, levelSlowRelease, &levelSlowRelease);
+  utils_setAudioLevelFilters();
 
-  PaError pErr = Pa_Initialize();
-  if (pErr != paNoError) {
-    printf("Pa_Initialize error: %d\n", pErr);
-    return -2;
-  }
+  if (Pa_Initialize() != paNoError) return -1;
 
   int deviceCount = Pa_GetDeviceCount();
-  if (deviceCount < 0) {
-    printf("Pa_GetDeviceCount error: %d\n", deviceCount);
-    return -3;
-  }
+  if (deviceCount < 0) return -2;
 
   if (deviceCount == 0) {
     printf("No audio devices.\n");
-    return -4;
+    return -3;
   }
+
+  const PaDeviceInfo *foundDeviceInfo;
+  int foundDeviceIndex = -1;
+  char audioDeviceName[MAX_DEVICE_NAME_LEN + 1] = { 0 };
+  globals_get1s(audio, deviceName, audioDeviceName, sizeof(audioDeviceName));
 
   printf("\nAvailable audio devices:\n");
   for (int deviceIndex = 0; deviceIndex < deviceCount; deviceIndex++) {
     const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(deviceIndex);
+    if ((receiver && deviceInfo->maxOutputChannels == 0) || (!receiver && deviceInfo->maxInputChannels == 0)) {
+      continue;
+    }
+
     printf("* %s\n", deviceInfo->name);
+    if (strcmp(deviceInfo->name, audioDeviceName) == 0) {
+      foundDeviceInfo = deviceInfo;
+      foundDeviceIndex = deviceIndex;
+    }
   }
   printf("\n");
+
+  if (foundDeviceIndex == -1) {
+    printf("Audio device %s not available for %s.\n", audioDeviceName, receiver ? "output" : "input");
+    return -4;
+  }
+
+  deviceChannelCount = receiver ? foundDeviceInfo->maxOutputChannels : foundDeviceInfo->maxInputChannels;
+  globals_set1i(audio, deviceChannelCount, deviceChannelCount);
+
+  printf("%s device: %s\n", receiver ? "Output" : "Input", audioDeviceName);
+  printf("Device channels: %d\n", deviceChannelCount);
+  printf("%s channels: %d\n", receiver ? "Receiver" : "Sender", networkChannelCount);
+  if (deviceChannelCount < networkChannelCount) {
+    printf("Device does not have enough output channels.\n");
+    return -5;
+  }
+
+  int framesPerCallbackBuffer = 0;
+  if (receiver) {
+    if (audioEncoding == AUDIO_ENCODING_OPUS) {
+      framesPerCallbackBuffer = globals_get1i(opus, frameSize);
+    } else if (audioEncoding == AUDIO_ENCODING_PCM) {
+      framesPerCallbackBuffer = globals_get1i(pcm, frameSize);
+    } else {
+      return -6;
+    }
+  }
+
+  int requestedDeviceSampleRate = globals_get1i(audio, deviceSampleRate);
+
+  PaStreamParameters params = { 0 };
+  params.device = foundDeviceIndex;
+  params.channelCount = deviceChannelCount;
+  params.sampleFormat = paFloat32;
+  params.suggestedLatency = receiver ? foundDeviceInfo->defaultLowOutputLatency : foundDeviceInfo->defaultLowInputLatency;
+  PaError pErr = Pa_OpenStream(
+    &stream,
+    receiver ? NULL : &params,
+    receiver ? &params : NULL,
+    requestedDeviceSampleRate,
+    framesPerCallbackBuffer,
+    0,
+    receiver ? playCallback : recordCallback,
+    NULL
+  );
+  if (pErr != paNoError) return -7;
+
+  const PaStreamInfo *streamInfo = Pa_GetStreamInfo(stream);
+  deviceLatency = receiver ? streamInfo->outputLatency : streamInfo->inputLatency; // seconds
+  int actualDeviceSampleRate = streamInfo->sampleRate; // Hz
+
+  if (audioEncoding == AUDIO_ENCODING_PCM && !receiver && requestedDeviceSampleRate != actualDeviceSampleRate) {
+    printf("We requested %d Hz but the device requires %d Hz. This is only an issue when using PCM encoding.\n", requestedDeviceSampleRate, actualDeviceSampleRate);
+    return -8;
+  }
+
+  // Set the deviceSampleRate global in case PortAudio gave a different sample rate to the one requested.
+  globals_set1i(audio, deviceSampleRate, (int)actualDeviceSampleRate);
+
+  printf("Device latency (ms): %f\n", 1000.0 * deviceLatency);
+  printf("Device sample rate: %d\n", actualDeviceSampleRate);
 
   return 0;
 }
 
-int audio_start (const char *audioDeviceName) {
-  int deviceCount = Pa_GetDeviceCount();
-  if (deviceCount < 0) {
-    printf("Pa_GetDeviceCount error: %d\n", deviceCount);
-    return -1;
-  }
+double audio_getDeviceLatency (void) {
+  return deviceLatency;
+}
 
-  const PaDeviceInfo *deviceInfo;
-  int deviceIndex;
-  for (deviceIndex = 0; deviceIndex < deviceCount; deviceIndex++) {
-    deviceInfo = Pa_GetDeviceInfo(deviceIndex);
-    if (strcmp(deviceInfo->name, audioDeviceName) == 0) {
-      printf("Output device: %s\n", deviceInfo->name);
-      if (deviceInfo->maxOutputChannels == 0) {
-        printf("No output channels.\n");
-        return -2;
-      }
-      printf("Device channels: %d\n", deviceInfo->maxOutputChannels);
-      printf("Receiver channels: %d\n", networkChannelCount);
-      if (deviceInfo->maxOutputChannels < networkChannelCount) {
-        printf("Device does not have enough output channels.\n");
-        return -3;
-      }
-      break;
+int audio_start (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, unsigned int fullRingSize) {
+  if (stream == NULL) return -1;
+
+  _ring = ring;
+  _ringBuf = ringBuf;
+  _fullRingSize = fullRingSize;
+
+  int err = 0;
+  double networkSampleRate = globals_get1i(audio, networkSampleRate);
+  double deviceSampleRate = globals_get1i(audio, deviceSampleRate);
+
+  if (!_receiver && audioEncoding == AUDIO_ENCODING_OPUS) {
+    // Calculate the maximum value that framesPerBuffer could be in recordCallback, leaving plenty of spare room.
+    int framesPerCallbackBuffer = 3.0 * deviceLatency * deviceSampleRate;
+    err = syncer_init(deviceSampleRate, networkSampleRate, framesPerCallbackBuffer, ring, ringBuf, fullRingSize);
+  } else if (_receiver) {
+    int framesPerCallbackBuffer;
+    if (audioEncoding == AUDIO_ENCODING_OPUS) {
+      framesPerCallbackBuffer = globals_get1i(opus, frameSize);
+    } else {
+      framesPerCallbackBuffer = globals_get1i(pcm, frameSize);
     }
+    err = syncer_init(networkSampleRate, deviceSampleRate, framesPerCallbackBuffer, ring, ringBuf, fullRingSize);
+  } else {
+    // PCM sender uses deviceSampleRate, no syncer required.
   }
+  if (err < 0) return err - 1;
 
-  if (deviceIndex == deviceCount) {
-    printf("Audio device \"%s\" not found.\n", audioDeviceName);
-    return -4;
-  }
+  if (Pa_StartStream(stream) != paNoError) return -3;
 
-  deviceChannelCount = deviceInfo->maxOutputChannels;
-  globals_set1i(audio, deviceChannelCount, deviceChannelCount);
+  return 0;
+}
 
-  PaStream *stream;
-  PaStreamParameters params = { 0 };
-  params.device = deviceIndex;
-  params.channelCount = deviceInfo->maxOutputChannels;
-  params.sampleFormat = paFloat32;
-  params.suggestedLatency = deviceInfo->defaultLowOutputLatency;
-  PaError pErr = Pa_OpenStream(&stream, NULL, &params, globals_get1i(audio, ioSampleRate), audioFrameSize, 0, playCallback, NULL);
-  if (pErr != paNoError) {
-    printf("Pa_OpenStream error: %d, %s\n", pErr, Pa_GetErrorText(pErr));
-    return -5;
-  }
-
-  const PaStreamInfo *streamInfo = Pa_GetStreamInfo(stream);
-  double deviceLatency = streamInfo->outputLatency; // seconds
-  double deviceSampleRate = streamInfo->sampleRate; // Hz
-  // Set the ioSampleRate global in case PortAudio gave a different sample rate to the one requested.
-  globals_set1i(audio, ioSampleRate, (int)deviceSampleRate);
-  printf("Device latency (ms): %f\n", 1000.0 * deviceLatency);
-  printf("Sample rate: %f\n", deviceSampleRate);
-
-  pErr = Pa_StartStream(stream);
-  if (pErr != paNoError) {
-    printf("Pa_StartStream error: %d, %s\n", pErr, Pa_GetErrorText(pErr));
-    return -7;
-  }
-
+int audio_deinit (void) {
+  // TODO
   return 0;
 }

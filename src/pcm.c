@@ -2,20 +2,15 @@
 #include "utils.h"
 #include "pcm.h"
 
-int pcm_encode (pcm_codec_t *codec, const float *inSampleBuf, int sampleCount, uint8_t *outData) {
+int pcm_encode (pcm_codec_t *codec, const double *inSampleBuf, int sampleCount, uint8_t *outData) {
   for (int i = 0; i < sampleCount; i++) {
-    // Convert float samples to 24-bit signed int
+    double sampleDouble = inSampleBuf[i];
+    if (sampleDouble < -1.0) sampleDouble = -1.0;
+    else if (sampleDouble > 1.0) sampleDouble = 1.0;
+    // Convert double samples to 24-bit signed int
     // http://blog.bjornroche.com/2009/12/int-float-int-its-jungle-out-there.html
-    // DEBUG: do we need dithering?
-    int32_t sampleInt = inSampleBuf[i] > 0.0f ? 8388607.0f * inSampleBuf[i] : 8388608.0f * inSampleBuf[i];
-
-    // The syncer detects clipping for stats but it does not actually clamp the samples, we need to do that.
-    if (sampleInt > 8388607) {
-      sampleInt = 8388607;
-    } else if (sampleInt < -8388608) {
-      sampleInt = -8388608;
-    }
-
+    // TODO: I don't think dithering is necessary here but I'm not 100% sure. I need to measure the waveform to check.
+    int32_t sampleInt = sampleDouble > 0.0 ? 8388607.0 * sampleDouble : 8388608.0 * sampleDouble;
     memcpy(&outData[3*i], &sampleInt, 3);
   }
 
@@ -25,7 +20,7 @@ int pcm_encode (pcm_codec_t *codec, const float *inSampleBuf, int sampleCount, u
   return 3 * sampleCount + 2;
 }
 
-int pcm_decode (pcm_codec_t *codec, const uint8_t *inData, int inDataLen, float *outSampleBuf) {
+int pcm_decode (pcm_codec_t *codec, const uint8_t *inData, int inDataLen, const uint8_t **samples) {
   inDataLen -= 2; // exclude 2 byte CRC at the end
   if (inDataLen < 3) return -1; // at least 1 24-bit sample
   if (inDataLen % 3 != 0) return -2;
@@ -35,17 +30,6 @@ int pcm_decode (pcm_codec_t *codec, const uint8_t *inData, int inDataLen, float 
   codec->crc = receivedCRC;
   if (calculatedCRC != receivedCRC) return -3;
 
-  int sampleCount = inDataLen / 3;
-  for (int i = 0; i < sampleCount; i++) {
-    int32_t sampleInt = 0;
-    // Leave the least significant byte of sampleInt empty and then shift back into it to sign extend.
-    memcpy((uint8_t *)&sampleInt + 1, &inData[3*i], 3);
-    sampleInt >>= 8;
-
-    // http://blog.bjornroche.com/2009/12/int-float-int-its-jungle-out-there.html
-    // DEBUG: do we need dithering?
-    outSampleBuf[i] = sampleInt > 0 ? sampleInt/8388607.0f : sampleInt/8388608.0f;
-  }
-
-  return sampleCount;
+  *samples = inData;
+  return inDataLen / 3;
 }

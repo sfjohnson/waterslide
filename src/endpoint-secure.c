@@ -12,9 +12,6 @@
 #include "wsocket.h"
 #include "endpoint-secure.h"
 
-// DEBUG: log
-// #include <errno.h>
-
 #define UNUSED __attribute__((unused))
 #define WG_READ_BUF_LEN 1500
 
@@ -31,14 +28,14 @@ static void sendBufToAll (const uint8_t *buf, int bufLen) {
   int err;
   for (int i = 0; i < endpointCount; i++) {
     err = wsocket_sendToPeer(&sockets[i], buf, bufLen);
-    if (err == -9) continue; // wsocket is not ready to send yet
+    if (err == -1) continue; // wsocket is not ready to send yet
     if (err != 0) {
       // DEBUG: send error, do something?
       continue;
     }
 
     // Accounts for IP and UDP headers
-    // DEBUG: This assumes IPv4
+    // TODO: This assumes IPv4
     globals_add1uiv(statsEndpoints, bytesOut, i, bufLen + 28);
   }
 }
@@ -46,6 +43,14 @@ static void sendBufToAll (const uint8_t *buf, int bufLen) {
 static void *tickLoop (UNUSED void *arg) {
   uint8_t tickBuf[1500] = { 0 };
   struct wireguard_result result;
+
+  // Calling wireguard_tick locks tunnel which onPeerPacket and endpointsec_send contend,
+  // and their work is more important, so bump this thread up to prevent priority inversion.
+  #if defined(__linux__) || defined(__ANDROID__)
+  utils_setCallerThreadRealtime(98, 0);
+  #elif defined(__APPLE__)
+  utils_setCallerThreadPrioHigh();
+  #endif
 
   while (threadsRunning) {
     // for (int i = 0; i < endpointCount; i++) {
@@ -71,9 +76,10 @@ static void *tickLoop (UNUSED void *arg) {
   return NULL;
 }
 
+// NOTE: this is called by multiple threads
 static int onPeerPacket (const uint8_t *buf, int bufLen, int epIndex) {
   // Accounts for IP and UDP headers
-  // DEBUG: This assumes IPv4
+  // TODO: This assumes IPv4
   globals_add1uiv(statsEndpoints, bytesIn, epIndex, bufLen + 28);
 
   // Use a slice of wgReadBuf so multiple receive threads aren't fighting over the same memory.
@@ -155,7 +161,7 @@ int endpointsec_init (int (*onPacket)(const uint8_t*, int, int)) {
   for (int i = 0; i < endpointCount; i++) {
     int ifLen = globals_get1sv(endpoints, interface, i, ifName, sizeof(ifName));
     if (ifLen <= 0) return -4;
-    err = wsocket_init (&sockets[i], myPubKey.key, peerPubKey.key, i, ifName, ifLen, onPeerPacket);
+    err = wsocket_init(&sockets[i], myPubKey.key, peerPubKey.key, i, ifName, ifLen, onPeerPacket);
     if (err < 0) return err - 4;
   }
 
@@ -177,6 +183,8 @@ int endpointsec_init (int (*onPacket)(const uint8_t*, int, int)) {
     err = pthread_create(&discoveryThreads[i], NULL, startDiscovery, (void*)i);
     if (err != 0) return -17;
   }
+
+  // DEBUG: gotta pthread_join all the discoveryThreads
 
   return 0;
 }
@@ -206,7 +214,7 @@ int endpointsec_send (const uint8_t *buf, int bufLen) {
   return 0;
 }
 
-void endpointsec_deinit () {
+void endpointsec_deinit (void) {
   if (tunnel != NULL) tunnel_free(tunnel);
 
   // TODO

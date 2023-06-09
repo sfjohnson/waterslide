@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-int monitor_init ();
+int monitor_init (void);
 
 #ifdef __cplusplus
 }

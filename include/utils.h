@@ -1,9 +1,18 @@
 #ifndef _UTILS_H
 #define _UTILS_H
 
-#include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-int utils_setCallerThreadPrioHigh ();
+#include <stdint.h>
+#include <stdbool.h>
+
+#if defined(__linux__) || defined(__ANDROID__)
+int utils_setCallerThreadRealtime (int priority, int core);
+#elif defined(__APPLE__)
+int utils_setCallerThreadPrioHigh (void);
+#endif
 
 // int utils_bindSocketToIf (int socket, const char *ifName, int ifLen, int port);
 
@@ -18,6 +27,10 @@ int utils_decodeVarintU16 (const uint8_t *buf, int len, uint16_t *result);
 uint16_t utils_readU16LE (const uint8_t *buf);
 int utils_writeU16LE (uint8_t *buf, uint16_t val);
 
+// Call utils_setAudioLevelFilters before using utils_setAudioStats
+void utils_setAudioLevelFilters (void);
+void utils_setAudioStats (double sample, int channel);
+
 // NOTE: this function is undefined for x = 0 or x = 1
 int utils_roundUpPowerOfTwo (unsigned int x);
 
@@ -27,5 +40,9 @@ int utils_x25519Base64ToBuf (uint8_t *keyBuf, const char *keyStr);
 
 uint32_t utils_crc32 (uint32_t crc, const uint8_t *buf, int bufLen);
 uint16_t utils_crc16 (uint16_t crc, const uint8_t *buf, int bufLen);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

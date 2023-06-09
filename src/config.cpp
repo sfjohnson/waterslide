@@ -4,6 +4,15 @@
 #include "globals.h"
 #include "protobufs/init-config.pb.h"
 #include "config.h"
+#if defined(__linux__) || defined(__ANDROID__)
+#include "tinyalsa/mixer.h"
+#endif
+
+typedef struct {
+  int id;
+  int *values;
+  int valueCount;
+} mixerControl_t;
 
 /*
 * Base64 encoding/decoding (RFC1341)
@@ -78,6 +87,85 @@ static uint8_t *base64Decode (const uint8_t *src, size_t len, size_t *out_len) {
   return out;
 }
 
+#if defined(__linux__) || defined(__ANDROID__)
+static int applyMixerConfig (unsigned int cardId, const google::protobuf::RepeatedPtrField<InitConfigProto_MixerControl> *controls) {
+  // Save the mixer state on the first call and restore it on the second call
+  static unsigned int savedCardId = 0;
+  static mixerControl_t *savedControls = NULL;
+  static int savedControlsCount = 0;
+
+  struct mixer_ctl *ctl;
+  struct mixer *mixer;
+
+  if ((controls == NULL && savedControls == NULL) || (controls != NULL && savedControls != NULL)) return -1;
+
+  if (controls == NULL) {
+    // Restore original config
+    mixer = mixer_open(savedCardId);
+    if (mixer == NULL) return -2;
+
+    for (int i = 0; i < savedControlsCount; i++) {
+      ctl = mixer_get_ctl(mixer, savedControls[i].id);
+      if (ctl == NULL) {
+        mixer_close(mixer);
+        return -3;
+      }
+      for (int j = 0; j < savedControls[i].valueCount; j++) {
+        mixer_ctl_set_value(ctl, j, savedControls[i].values[j]);
+      }
+      delete[] savedControls[i].values;
+    }
+
+    mixer_close(mixer);
+    delete[] savedControls;
+    savedControls = NULL;
+    savedControlsCount = 0;
+    return 0;
+  }
+
+  savedCardId = cardId;
+  mixer = mixer_open(cardId);
+  if (mixer == NULL) return -4;
+
+  savedControls = new (std::nothrow) mixerControl_t[controls->size()];
+  if (savedControls == NULL) return -5;
+  savedControlsCount = controls->size();
+
+  for (int i = 0; i < controls->size(); i++) {
+    auto control = controls->Get(i);
+    ctl = mixer_get_ctl(mixer, control.id());
+    if (ctl == NULL) {
+      mixer_close(mixer);
+      return -6;
+    }
+    savedControls[i].id = control.id();
+    if (control.has_enumvalue()) {
+      savedControls[i].values = new (std::nothrow) int[1];
+      if (savedControls[i].values == NULL) return -7;
+      savedControls[i].valueCount = 1;
+      savedControls[i].values[0] = mixer_ctl_get_value(ctl, 0);
+      mixer_ctl_set_enum_by_string(ctl, control.enumvalue().c_str());
+    } else if (control.has_intvalues()) {
+      unsigned int intValueCount = control.intvalues().values_size();
+      if (mixer_ctl_get_num_values(ctl) != intValueCount) return -8;
+      savedControls[i].values = new (std::nothrow) int[intValueCount];
+      if (savedControls[i].values == NULL) return -9;
+      savedControls[i].valueCount = intValueCount;
+      for (unsigned int j = 0; j < intValueCount; j++) {
+        savedControls[i].values[j] = mixer_ctl_get_value(ctl, j);
+        mixer_ctl_set_value(ctl, j, control.intvalues().values(j));
+      }
+    } else {
+      mixer_close(mixer);
+      return -10;
+    }
+  }
+
+  mixer_close(mixer);
+  return 0;
+}
+#endif
+
 int config_init (const char *b64ConfigStr) {
   size_t bufLen = 0;
   uint8_t *buf = base64Decode((uint8_t *)b64ConfigStr, strlen(b64ConfigStr), &bufLen);
@@ -94,8 +182,8 @@ int config_init (const char *b64ConfigStr) {
     return -1;
   }
 
-  int audioChannelCount = initConfig.audio().channelcount();
-  if (audioChannelCount > MAX_AUDIO_CHANNELS) {
+  int networkChannelCount = initConfig.audio().networkchannelcount();
+  if (networkChannelCount > MAX_AUDIO_CHANNELS) {
     printf("Init config: Too many audio channels! Max is %d.\n", MAX_AUDIO_CHANNELS);
     return -2;
   }
@@ -130,9 +218,27 @@ int config_init (const char *b64ConfigStr) {
   globals_set1i(mux, maxChannels, initConfig.mux().maxchannels());
   globals_set1i(mux, maxPacketSize, initConfig.mux().maxpacketsize());
 
-  globals_set1i(audio, networkChannelCount, audioChannelCount);
-  globals_set1i(audio, ioSampleRate, initConfig.audio().iosamplerate());
-  globals_set1s(audio, deviceName, initConfig.audio().devicename().c_str());
+  globals_set1i(audio, networkChannelCount, networkChannelCount);
+  globals_set1i(audio, deviceSampleRate, initConfig.audio().devicesamplerate());
+  globals_set1i(audio, decodeRingLength, initConfig.audio().decoderinglength());
+
+  #if defined(__linux__) || defined(__ANDROID__)
+  if (!initConfig.audio().has_linux()) return -4;
+  int err = applyMixerConfig(initConfig.audio().linux().cardid(), &initConfig.audio().linux().controls());
+  if (err < 0) return err - 4;
+  globals_set1i(audio, deviceChannelCount, initConfig.audio().linux().devicechannelcount());
+  globals_set1i(audio, cardId, initConfig.audio().linux().cardid());
+  globals_set1i(audio, deviceId, initConfig.audio().linux().deviceid());
+  globals_set1i(audio, bitsPerSample, initConfig.audio().linux().bitspersample());
+  globals_set1i(audio, periodSize, initConfig.audio().linux().periodsize());
+  globals_set1i(audio, periodCount, initConfig.audio().linux().periodcount());
+  globals_set1i(audio, loopSleep, initConfig.audio().linux().loopsleep());
+  #else
+
+  if (!initConfig.audio().has_macos()) return -15;
+  globals_set1s(audio, deviceName, initConfig.audio().macos().devicename().c_str());
+  #endif
+
   globals_set1ff(audio, levelSlowAttack, initConfig.audio().levelslowattack());
   globals_set1ff(audio, levelSlowRelease, initConfig.audio().levelslowrelease());
   globals_set1ff(audio, levelFastAttack, initConfig.audio().levelfastattack());
@@ -143,12 +249,18 @@ int config_init (const char *b64ConfigStr) {
     globals_set1i(opus, bitrate, initConfig.audio().opus().bitrate());
     globals_set1i(opus, frameSize, initConfig.audio().opus().framesize());
     globals_set1i(opus, maxPacketSize, initConfig.audio().opus().maxpacketsize());
-    globals_set1i(opus, decodeRingLength, initConfig.audio().opus().decoderinglength());
+    globals_set1i(audio, networkSampleRate, 48000);
+
   } else if (initConfig.audio().has_pcm()) {
     globals_set1ui(audio, encoding, AUDIO_ENCODING_PCM);
     globals_set1i(pcm, frameSize, initConfig.audio().pcm().framesize());
-    globals_set1i(pcm, sampleRate, initConfig.audio().pcm().samplerate());
-    globals_set1i(pcm, decodeRingLength, initConfig.audio().pcm().decoderinglength());
+    if (initConfig.audio().pcm().networksamplerate() > 0 && initConfig.mode() == 1) { // receiver
+      globals_set1i(audio, networkSampleRate, initConfig.audio().pcm().networksamplerate());
+    } else if (initConfig.audio().pcm().networksamplerate() == 0 && initConfig.mode() == 0) { // sender
+      globals_set1i(audio, networkSampleRate, initConfig.audio().devicesamplerate());
+    } else {
+      return -16; // audio.pcm.networkSampleRate is a receiver-only field
+    }
   }
 
   globals_set1i(fec, symbolLen, initConfig.fec().symbollen());
@@ -158,4 +270,12 @@ int config_init (const char *b64ConfigStr) {
   globals_set1i(monitor, wsPort, initConfig.monitor().wsport());
 
   return 0;
+}
+
+int config_deinit (void) {
+  #if defined(__linux__) || defined(__ANDROID__)
+  return applyMixerConfig(0, NULL);
+  #else
+  return 0;
+  #endif
 }

@@ -4,8 +4,12 @@
 #include <net/if.h>
 #include <string.h>
 #include <unistd.h>
+#include <poll.h>
+#include <errno.h>
+#include <fcntl.h>
 #include "boringtun/wireguard_ffi.h"
 #include "globals.h"
+#include "utils.h"
 #include "wsocket.h"
 
 #define UNUSED __attribute__((unused))
@@ -41,14 +45,34 @@ static void *recvLoop (void *arg) {
   struct sockaddr_in recvAddr = { 0 };
   wsocket_t *sock = (wsocket_t *)arg;
 
+  // For receiver: all the audio and FEC decoding happens on these threads (one thread per endpoint).
+  #if defined(__linux__) || defined(__ANDROID__)
+  utils_setCallerThreadRealtime(98, 0);
+  #elif defined(__APPLE__)
+  utils_setCallerThreadPrioHigh();
+  #endif
+
+  struct pollfd pfd = { 0 };
+  pfd.fd = sock->sock;
+  pfd.events = POLLIN;
+
+  // TODO: remove poll() and use one thread for all endpoints which should improve performance as the mutex around wireguard_tunnel *tunnel won't be getting slammed anymore
+  // TODO: this while loop needs an exit flag for clean deinit
   while (true) {
+    int err = poll(&pfd, 1, -1);
+    if (err != 1 || pfd.revents != POLLIN) {
+      // TODO: implement closing this socket and re-opening it on a timer
+      usleep(1000);
+      continue;
+    }
+
     socklen_t recvAddrLen = sizeof(recvAddr);
     ssize_t recvLen = recvfrom(sock->sock, recvBuf, sizeof(recvBuf), 0, (struct sockaddr*)&recvAddr, &recvAddrLen);
 
     // If recv failed, ignore it but wait a bit first
-    // DEBUG: implement closing this socket and re-opening it on a timer
+    // TODO: implement closing this socket and re-opening it on a timer
     if (recvLen < 0 || recvAddrLen != sizeof(recvAddr)) {
-      usleep(10000);
+      usleep(1000);
       continue;
     }
 
@@ -96,31 +120,35 @@ int wsocket_init (wsocket_t *sock, const uint8_t *myPubKey, const uint8_t *peerP
   sock->sock = socket(AF_INET, SOCK_DGRAM, 0);
   if (sock->sock < 0) return -1;
 
+  int flags = fcntl(sock->sock, F_GETFL);
+  if (flags < 0) return -2;
+  if (fcntl(sock->sock, F_SETFL, flags | O_NONBLOCK) < 0) return -3;
+
   int err;
   // bind socket to interface
   #if defined(__ANDROID__) || defined(__linux__)
   err = setsockopt(sock->sock, SOL_SOCKET, SO_BINDTODEVICE, ifName, ifLen);
-  if (err < 0) return -2;
-  #elif defined(__MACH__)
-  int ifIndex = if_nametoindex(ifName);
-  if (ifIndex == 0) return -3;
-  err = setsockopt(sock->sock, IPPROTO_IP, IP_BOUND_IF, &ifIndex, sizeof(ifIndex));
   if (err < 0) return -4;
+  #elif defined(__APPLE__)
+  int ifIndex = if_nametoindex(ifName);
+  if (ifIndex == 0) return -5;
+  err = setsockopt(sock->sock, IPPROTO_IP, IP_BOUND_IF, &ifIndex, sizeof(ifIndex));
+  if (err < 0) return -6;
   #else
-  return -5;
+  return -7;
   #endif
 
   // DEBUG: log
   printf("epIndex %d bound to interface %s\n", epIndex, ifName);
 
   err = pthread_create(&sock->recvThread, NULL, recvLoop, (void*)sock);
-  if (err != 0) return -6;
+  if (err != 0) return -8;
 
   return 0;
 }
 
 int wsocket_waitForPeerAddr (wsocket_t *sock) {
-  if (sock->state != Idle) return -7;
+  if (sock->state != Idle) return -1;
 
   uint8_t sendBuf[65];
 
@@ -141,14 +169,20 @@ int wsocket_waitForPeerAddr (wsocket_t *sock) {
 }
 
 int wsocket_sendToPeer (const wsocket_t *sock, const uint8_t *buf, int bufLen) {
-  if (sock->state != GotPeerAddr) return -8;
+  if (sock->state != GotPeerAddr) return -1;
 
   struct sockaddr_in peerAddr = { 0 };
   peerAddr.sin_family = AF_INET;
   peerAddr.sin_addr.s_addr = sock->peerAddr;
   peerAddr.sin_port = sock->peerPort;
-  ssize_t err = sendto(sock->sock, buf, bufLen, 0, (struct sockaddr*)&peerAddr, sizeof(peerAddr));
-  if (err != bufLen) return -9;
+  ssize_t sendLen = sendto(sock->sock, buf, bufLen, 0, (struct sockaddr*)&peerAddr, sizeof(peerAddr));
+  if (sendLen < 0) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      globals_add1uiv(statsEndpoints, sendCongestion, sock->epIndex, 1);
+    } else {
+      return -2;
+    }
+  }
 
   return 0;
 }

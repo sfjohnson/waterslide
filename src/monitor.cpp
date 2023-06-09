@@ -14,6 +14,7 @@
 #define UNUSED __attribute__((unused))
 
 static int audioChannelCount, endpointCount;
+// DEBUG: two threads are accessing the members of wsClient (wsThread and statsThread). Make sure these are thread-safe
 static std::atomic<uws_ws_t*> wsClient = NULL;
 
 static void openHandler(uws_ws_t *ws) {
@@ -65,9 +66,25 @@ static void *statsLoop (UNUSED void *arg) {
     protoEndpoints[i]->set_interfacename(ifName);
   }
 
+  // DEBUG: test
+  // FILE *syncDataFile = fopen("receiver-sync.data", "w+b");
+  // int debugCounter = 0;
+  // printf("writing to receiver-sync.data...\n");
   while (true) {
     usleep(50000);
     if (wsClient == NULL) continue;
+
+    // DEBUG: test
+    // if (debugCounter < 24000) { // 20 mins
+    //   // int64_t receiverSync = globals_get1i(audio, receiverSync);
+    //   double receiverSync;
+    //   globals_get1ff(audio, receiverSyncFilt, &receiverSync);
+    //   fwrite(&receiverSync, 8, 1, syncDataFile);
+    // } else if (debugCounter == 24000) {
+    //   fclose(syncDataFile);
+    //   printf("done!\n");
+    // }
+    // debugCounter++;
 
     for (int i = 0; i < audioChannelCount; i++) {
       protoAudioChannels[i]->set_clippingcount(globals_get1uiv(statsCh1Audio, clippingCounts, i));
@@ -91,11 +108,13 @@ static void *statsLoop (UNUSED void *arg) {
       protoEndpoints[i]->set_ooopacketcount(globals_get1uiv(statsEndpoints, oooPacketCount, i));
       protoEndpoints[i]->set_bytesout(globals_get1uiv(statsEndpoints, bytesOut, i));
       protoEndpoints[i]->set_bytesin(globals_get1uiv(statsEndpoints, bytesIn, i));
+      protoEndpoints[i]->set_sendcongestion(globals_get1uiv(statsEndpoints, sendCongestion, i));
     }
     protoCh1->mutable_audiostats()->set_bufferoverruncount(globals_get1ui(statsCh1Audio, bufferOverrunCount));
     protoCh1->mutable_audiostats()->set_bufferunderruncount(globals_get1ui(statsCh1Audio, bufferUnderrunCount));
     protoCh1->mutable_audiostats()->set_streambufferpos(globals_get1ui(statsCh1Audio, streamBufferPos));
     protoCh1->mutable_audiostats()->set_encodethreadjittercount(globals_get1ui(statsCh1Audio, encodeThreadJitterCount));
+    protoCh1->mutable_audiostats()->set_audioloopxruncount(globals_get1ui(statsCh1Audio, audioLoopXrunCount));
 
     switch (globals_get1ui(audio, encoding)) {
       case AUDIO_ENCODING_OPUS:
@@ -117,7 +136,7 @@ static void *statsLoop (UNUSED void *arg) {
   return NULL;
 }
 
-int monitor_init () {
+int monitor_init (void) {
   audioChannelCount = globals_get1i(audio, networkChannelCount);
   endpointCount = globals_get1i(endpoints, endpointCount);
 

@@ -47,9 +47,18 @@ const configString = (initConfigProto.encode(configFile).finish() as Buffer).toS
 const waterslide = spawn(binPath, [configString])
 waterslide.stdout.pipe(process.stdout)
 waterslide.stderr.pipe(process.stderr)
-waterslide.on('close', (_, code) => {
-  console.log(`Child process exited with code ${code}`);
+
+// Let the child process decide when the parent exits. The signals are passed automatically
+// to the child and we need to make sure we don't exit on those signals, to give the child
+// time to deinit.
+waterslide.on('close', (code, signal) => {
+  if (code === null) console.log('Closed by', signal)
+  process.exit(code ?? 0)
 })
+process.on('SIGINT', () => { })
+process.on('SIGHUP', () => { })
+process.on('SIGQUIT', () =>{ })
+process.on('SIGTERM', () => { })
 
 app.use(express.static(path.join(__dirname, '../monitor')))
 app.listen(8080, () => {

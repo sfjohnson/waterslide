@@ -46,6 +46,10 @@
         <div class="label">sender OS jitter:</div>
         <div class="value">{data.encodeThreadJitterCount}</div>
       </div>
+      <div class="entry">
+        <div class="label">audio loop xruns:</div>
+        <div class="value">{data.audioLoopXrunCount}</div>
+      </div>
     </div>
   </div>
 </div>

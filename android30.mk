@@ -17,12 +17,12 @@ CPPFLAGS = -std=c++17 -O3 -fstrict-aliasing -Wno-gnu-anonymous-struct -Wno-neste
 ORIGIN=$ORIGIN
 O=$$O
 LDFLAGS = -Llib/android30 -pthread -rpath '$ORIGIN/../lib'
-LIBS = -L$(TOOLCHAIN)/sysroot/usr/lib/aarch64-linux-android/30 -lstdc++ -lz -lm -lopus -luwebsockets -lraptorq -lck -lr8brain -lprotobuf-lite -lboringtun -llog -lOpenSLES -loboe
+LIBS = -L$(TOOLCHAIN)/sysroot/usr/lib/aarch64-linux-android/30 -lstdc++ -lz -lm -lopus -luwebsockets -lraptorq -lck -lr8brain -lprotobuf-lite -lboringtun -llog -lOpenSLES -ltinyalsa
 
 TARGET = waterslide-android30
 PROTOBUFS = init-config.proto monitor.proto
-SRCSC = main.c sender.c receiver.c globals.c utils.c circ.c slip.c mux.c demux.c endpoint-secure.c pcm.c wsocket.c
-SRCSCPP = syncer.cpp config.cpp audio-android.cpp monitor.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
+SRCSC = main.c audio-android.c sender.c receiver.c globals.c utils.c slip.c mux.c demux.c endpoint-secure.c pcm.c wsocket.c
+SRCSCPP = syncer.cpp config.cpp monitor.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
 OBJS = $(subst .c,.o,$(addprefix src/,$(SRCSC))) $(subst .cpp,.o,$(addprefix src/,$(SRCSCPP)))
 
 .PHONY: setup

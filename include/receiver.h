@@ -1,6 +1,6 @@
 #ifndef _RECEIVER_H
 #define _RECEIVER_H
 
-int receiver_init ();
+int receiver_init (void);
 
 #endif

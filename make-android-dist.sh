@@ -17,9 +17,11 @@ echo "Downloading waterslide dependencies"
 
 echo "Make waterslide"
 make -f macos10.mk clean
+make -f macos-arm64.mk clean
 make -f android30.mk
 
 cp bin/waterslide-android30 waterslide-android-dist/bin
+make -f android30.mk clean
 
 echo "Make monitor"
 cp protobufs/monitor.proto monitor/public
@@ -41,3 +43,4 @@ cp -r monitor/dist waterslide-android-dist/frontend/monitor
 echo "Make dist tar"
 tar -cjSf waterslide-android-dist.tar.bz2 waterslide-android-dist
 rm -rf waterslide-android-dist
+echo "Made waterslide-android-dist.tar.bz2"

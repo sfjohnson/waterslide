@@ -150,7 +150,7 @@ static void *recvLoop (void *arg) {
   return NULL;
 }
 
-int main () {
+int main (void) {
   printf("Waterslide discovery server, build 3\n");
 
   serverSock = socket(AF_INET, SOCK_DGRAM, 0);

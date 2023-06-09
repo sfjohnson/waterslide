@@ -21,36 +21,66 @@ message InitConfigProto {
     int32 maxPacketSize = 2;
   }
 
-  message Opus {
+  message Opus { // networkSampleRate is always 48000
     int32 bitrate = 1; // 128000 bps per channel is a good starting point. This value is the total bitrate not per-channel bitrate.
     int32 frameSize = 2; // 240 samples = 5 ms @ 48 kHz // https://www.audiokinetic.com/library/edge/?source=Help&id=opus_soft_parameters
     int32 maxPacketSize = 3; // Packets with 120 frames at 256 kbps stereo are around 80 to 130 bytes. This value also affects the minimum data rate.
-    int32 decodeRingLength = 6; // In samples. Must be larger than frameSize. Affects receive latency.
   }
 
   message PCM {
     int32 frameSize = 1; // In samples. Packet size in bytes is 3 * channelCount * frameSize + 2
-    int32 sampleRate = 2;
-    int32 decodeRingLength = 6; // In samples. Must be larger than frameSize. Affects receive latency.
+    int32 networkSampleRate = 2; // Receiver only. For sender networkSampleRate = deviceSampleRate
+  }
+
+  message MacOS {
+    string deviceName = 1;
+  }
+
+  message MixerIntValues {
+    repeated int32 values = 1;
+  }
+
+  message MixerControl {
+    int32 id = 1;
+    oneof values {
+      string enumValue = 2;
+      MixerIntValues intValues = 3;
+    }
+  }
+
+  message Linux {
+    int32 cardId = 1;
+    int32 deviceId = 2;
+    int32 deviceChannelCount = 3;
+    int32 bitsPerSample = 4;
+    int32 periodSize = 5; // In samples
+    int32 periodCount = 6;
+    int32 loopSleep = 7; // In microseconds
+    repeated MixerControl controls = 8;
   }
 
   message Audio {
-    int32 channelCount = 1;
-    int32 ioSampleRate = 2;
-    string deviceName = 3;
+    int32 networkChannelCount = 1;
+    int32 deviceSampleRate = 2;
+    int32 decodeRingLength = 3; // In samples. Must be larger than frameSize (Opus or PCM). Affects receive latency.
+
+    oneof osConfig {
+      MacOS macos = 4;
+      Linux linux = 5;
+    }
 
     oneof encoding {
-      Opus opus = 5;
-      PCM pcm = 6;  
+      Opus opus = 6;
+      PCM pcm = 7;
     }
 
     // higher means quicker
     // Main meter
-    float levelSlowAttack = 7;
-    float levelSlowRelease = 8;
+    float levelSlowAttack = 8;
+    float levelSlowRelease = 9;
     // Peak meter
-    float levelFastAttack = 9;
-    float levelFastRelease = 10;
+    float levelFastAttack = 10;
+    float levelFastRelease = 11;
   }
 
   message Fec {

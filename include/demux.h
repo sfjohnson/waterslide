@@ -25,7 +25,7 @@ typedef struct {
   uint8_t *_blockBuf;
 } demux_channel_t;
 
-int demux_init ();
+int demux_init (void);
 int demux_addChannel (demux_channel_t *channel);
 int demux_readPacket (const uint8_t *buf, int bufLen, int endpointIndex);
 

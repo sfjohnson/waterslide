@@ -22,9 +22,10 @@ message MonitorProto {
     uint32 bufferOverrunCount = 3;
     uint32 bufferUnderrunCount = 4;
     uint32 encodeThreadJitterCount = 5;
+    uint32 audioLoopXrunCount = 6;
     oneof encoding {
-      OpusStats opusStats = 6;
-      PCMStats pcmStats = 7;
+      OpusStats opusStats = 7;
+      PCMStats pcmStats = 8;
     }
   }
 
@@ -36,6 +37,7 @@ message MonitorProto {
     uint32 oooPacketCount = 5;
     uint64 bytesOut = 6;
     uint64 bytesIn = 7;
+    uint32 sendCongestion = 8;
   }
 
   message MuxChannelStats {

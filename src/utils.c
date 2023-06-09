@@ -1,22 +1,49 @@
+#if defined(__APPLE__)
+#include <mach/mach_time.h>
+#include <mach/thread_act.h>
+#elif defined(__linux__) || defined(__ANDROID__)
+#define _GNU_SOURCE
+#include <sched.h>
+#endif
+
 #include <pthread.h>
 #include <stdbool.h>
 #include <netinet/in.h>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <stdio.h>
+#include <string.h>
+#include <math.h>
 #include "boringtun/wireguard_ffi.h"
+#include "globals.h"
 #include "utils.h"
-
-#if defined(__MACH__)
-#include <mach/mach_time.h>
-#include <mach/thread_act.h>
-#endif
 
 #define UNUSED __attribute__((unused))
 
-int utils_setCallerThreadPrioHigh () {
-  // DEBUG: implement for other platforms
-  #if defined(__MACH__)
+static double levelFastAttack = 0.0, levelFastRelease = 0.0, levelSlowAttack = 0.0, levelSlowRelease = 0.0;
+
+#if defined(__linux__) || defined(__ANDROID__)
+int utils_setCallerThreadRealtime (int priority, int core) {
+  // Pin to CPU core
+  cpu_set_t cpuSet;
+  CPU_ZERO(&cpuSet);
+  CPU_SET(core, &cpuSet);
+  if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuSet) < 0) return -1;
+
+  // Set to RT
+  struct sched_param sp;
+  memset(&sp, 0, sizeof(sp));
+  sp.sched_priority = priority;
+  if (sched_setscheduler(0, SCHED_FIFO, &sp) < 0) return -2;
+
+  return 0;
+}
+#endif
+
+// DEBUG: review this code, see https://user.cockos.com/~deadbeef/index.php?article=854
+#if defined(__APPLE__)
+int utils_setCallerThreadPrioHigh (void) {
+  
   // https://stackoverflow.com/a/44310370
   mach_timebase_info_data_t timebase;
   kern_return_t kr = mach_timebase_info(&timebase);
@@ -34,10 +61,13 @@ int utils_setCallerThreadPrioHigh () {
 
   kr = thread_policy_set(threadport, THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&ttcpolicy, THREAD_TIME_CONSTRAINT_POLICY_COUNT);
   if (kr != KERN_SUCCESS) return -2;
-  #endif
 
   return 0;
 }
+#endif
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 int utils_slipEncode (const uint8_t *inBuf, int inBufLen, uint8_t *outBuf) {
   int outPos = 0;
@@ -121,18 +151,95 @@ int utils_decodeVarintU16 (const uint8_t *buf, int len, uint16_t *result) {
   return bytePos;
 }
 
-uint16_t utils_readU16LE (const uint8_t *buf) {
+inline uint16_t utils_readU16LE (const uint8_t *buf) {
   return ((uint16_t)buf[1] << 8) | buf[0];
 }
 
-int utils_writeU16LE (uint8_t *buf, uint16_t val) {
+inline int utils_writeU16LE (uint8_t *buf, uint16_t val) {
   buf[0] = val & 0xff;
   buf[1] = val >> 8;
   return 2;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void utils_setAudioLevelFilters (void) {
+  globals_get1ff(audio, levelFastAttack, &levelFastAttack);
+  globals_get1ff(audio, levelFastRelease, &levelFastRelease);
+  globals_get1ff(audio, levelSlowAttack, &levelSlowAttack);
+  globals_get1ff(audio, levelSlowRelease, &levelSlowRelease);
+}
+
+// NOTE: this must be audio callback safe
+void utils_setAudioStats (double sample, int channel) {
+  if (sample >= 1.0 || sample <= -1.0) {
+    globals_add1uiv(statsCh1Audio, clippingCounts, channel, 1);
+  }
+
+  double levelFast, levelSlow;
+  globals_get1ffv(statsCh1Audio, levelsFast, channel, &levelFast);
+  globals_get1ffv(statsCh1Audio, levelsSlow, channel, &levelSlow);
+
+  double levelFastDiff = fabs(sample) - levelFast;
+  double levelSlowDiff = fabs(sample) - levelSlow;
+
+  if (levelFastDiff > 0) {
+    levelFast += levelFastAttack * levelFastDiff;
+  } else {
+    levelFast += levelFastRelease * levelFastDiff;
+  }
+  if (levelSlowDiff > 0) {
+    levelSlow += levelSlowAttack * levelSlowDiff;
+  } else {
+    levelSlow += levelSlowRelease * levelSlowDiff;
+  }
+
+  globals_set1ffv(statsCh1Audio, levelsFast, channel, levelFast);
+  globals_set1ffv(statsCh1Audio, levelsSlow, channel, levelSlow);
+}
+
+// void utils_writeSampleF32LE (void *dest, double src, bool setStats, int channel) {
+//   if (src < -1.0) src = -1.0;
+//   else if (src > 1.0) src = 1.0;
+//   // setAudioStats will detect clipping and tell the user
+//   if (setStats) setAudioStats(src, channel);
+//   float sampleFloat = src;
+//   memcpy(dest, &sampleFloat, 4);
+// }
+
+// void utils_writeSampleS32LE (void *dest, double src, bool setStats, int channel) {
+//   // TODO: verify this conversion is correct by measuring distortion
+//   if (src < -1.0) src = -1.0;
+//   else if (src > 1.0) src = 1.0;
+//   if (setStats) setAudioStats(src, channel);
+//   // http://blog.bjornroche.com/2009/12/int-float-int-its-jungle-out-there.html
+//   int32_t sampleInt = src > 0.0 ? 2147483647.0*src : 2147483648.0*src;
+//   memcpy(dest, &sampleInt, 4);
+// }
+
+// inline double utils_readSampleS32LE (const void *src, bool setStats, int channel) {
+//   int32_t sampleInt;
+//   memcpy(&sampleInt, src, 4);
+//   double sampleDouble = sampleInt > 0 ? sampleInt/2147483647.0 : sampleInt/2147483648.0;
+//   if (setStats) setAudioStats(sampleDouble, channel);
+//   return sampleDouble;
+// }
+
+// inline double utils_readSampleS16LE (const void *src, bool setStats, int channel) {
+//   int16_t sampleInt;
+//   memcpy(&sampleInt, src, 2);
+//   double sampleDouble = sampleInt > 0 ? sampleInt/32767.0 : sampleInt/32768.0;
+//   if (setStats) setAudioStats(sampleDouble, channel);
+//   // Dithering is not necessary as the significand of a float is > 16 bits
+//   return sampleDouble;
+// }
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
 // NOTE: this function is undefined for x = 0 or x = 1
-int utils_roundUpPowerOfTwo (unsigned int x) {
+inline int utils_roundUpPowerOfTwo (unsigned int x) {
   return 1 << (1 + __builtin_clz(1) - __builtin_clz(x-1));
 }
 

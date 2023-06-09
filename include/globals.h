@@ -29,23 +29,32 @@ globals_declare1i(mux, maxChannels)
 globals_declare1i(mux, maxPacketSize)
 
 globals_declare1i(audio, networkChannelCount) // Number of audio channels sent and received over network. Must be <= deviceChannelCount
-globals_declare1i(audio, deviceChannelCount) // Number of audio channels supported by device (soundcard)
-globals_declare1i(audio, ioSampleRate) // Sample rate of device (soundcard)
-globals_declare1s(audio, deviceName)
+globals_declare1i(audio, deviceChannelCount) // Number of audio channels supported by device (soundcard). Pulled from driver for macOS and pulled from config for Linux.
+globals_declare1i(audio, networkSampleRate)
+globals_declare1i(audio, deviceSampleRate)
+globals_declare1i(audio, decodeRingLength) // In samples. Must be larger than frameSize (Opus or PCM). Affects receive latency.
+globals_declare1s(audio, deviceName) // macOS only
+globals_declare1i(audio, cardId) // Linux only
+globals_declare1i(audio, deviceId) // Linux only
+globals_declare1i(audio, bitsPerSample) // Linux only
+globals_declare1i(audio, periodSize) // Linux only, in samples. Audio callback latency is periodSize*periodCount/2
+globals_declare1i(audio, periodCount) // Linux only, in samples. Setting this higher improves DMA pointer resolution on some systems. Set periodSize lower to compensate for this.
+globals_declare1i(audio, loopSleep) // Linux only. RT loop sleeps for this many microseconds after running the audio callback. Set low enough for no xruns, but high enough for reasonable CPU usage.
+
 globals_declare1ff(audio, levelSlowAttack) // Meter filtering for monitor
 globals_declare1ff(audio, levelSlowRelease)
 globals_declare1ff(audio, levelFastAttack)
 globals_declare1ff(audio, levelFastRelease)
 globals_declare1ui(audio, encoding)
+globals_declare1i(audio, receiverSync) // Tracks drift between sender and receiver audio callbacks
+globals_declare1ff(audio, receiverSyncFilt)
 
 globals_declare1i(opus, bitrate) // In bits per second
 globals_declare1i(opus, frameSize) // Normally 240 samples = 5 ms @ 48 kHz
 globals_declare1i(opus, maxPacketSize) // Max size of encoded packet in bytes, containing frameSize samples
-globals_declare1i(opus, decodeRingLength) // In samples. Must be larger than frameSize
 
 globals_declare1i(pcm, frameSize) // In samples. Packet size in bytes is 3 * channelCount * frameSize + 2
 globals_declare1i(pcm, sampleRate)
-globals_declare1i(pcm, decodeRingLength) // In bytes. Must be larger than 1 packet. Affects receive latency.
 
 globals_declare1i(fec, symbolLen)
 globals_declare1i(fec, sourceSymbolsPerBlock)
@@ -58,6 +67,7 @@ globals_declare1uiv(statsEndpoints, dupPacketCount)
 globals_declare1uiv(statsEndpoints, oooPacketCount)
 globals_declare1uiv(statsEndpoints, bytesOut)
 globals_declare1uiv(statsEndpoints, bytesIn)
+globals_declare1uiv(statsEndpoints, sendCongestion)
 globals_declare1iv(statsCh1Endpoints, lastSbn)
 globals_declare1ui(statsCh1, dupBlockCount)
 globals_declare1ui(statsCh1, oooBlockCount)
@@ -68,6 +78,7 @@ globals_declare1ui(statsCh1Audio, streamBufferPos)
 globals_declare1ui(statsCh1Audio, bufferOverrunCount)
 globals_declare1ui(statsCh1Audio, bufferUnderrunCount)
 globals_declare1ui(statsCh1Audio, encodeThreadJitterCount)
+globals_declare1ui(statsCh1Audio, audioLoopXrunCount)
 globals_declare1ui(statsCh1AudioOpus, codecErrorCount)
 globals_declare1ui(statsCh1AudioPCM, crcFailCount)
 

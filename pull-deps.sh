@@ -46,13 +46,13 @@ mkdir -p bin lib/$ARCH lib/android30 licenses
 
 download all     v21.12.0     protobuf         libprotobuf-lite
 download all     v0.7.16      ck               libck
-download android v1.6.3       oboe             liboboe
+download android v2.1.0       tinyalsa         libtinyalsa
 download macos   v19.7.4      portaudio        libportaudio
 download all     v6.2.2       r8brain-free-src libr8brain
 download all     v1.4.10      opus             libopus
-download all     v1.7.12      raptorq          libraptorq
+download all     v1.7.13      raptorq          libraptorq
 download all     v19.7.14     uWebSockets      libuwebsockets
-download all     v0.5.7       boringtun        libboringtun
+download all     v0.5.9       boringtun        libboringtun
 
 echo "Fixing protobuf include path..."
 mkdir -p include/deps/google
