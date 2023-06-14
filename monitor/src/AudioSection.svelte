@@ -2,10 +2,6 @@
   import AudioMeter from './AudioMeter.svelte'
   import StreamMeter from './StreamMeter.svelte'
 
-  export let config = {
-    streamBufferSize: 1024
-  }
-
   export let data = {}
 </script>
 
@@ -13,10 +9,7 @@
   <h1><span>audio</span></h1>
   <div class="sub-container">
     <AudioMeter data={data.audioChannel} />
-    <StreamMeter
-      bufferSize={config.streamBufferSize}
-      data={data}
-    />
+    <StreamMeter data={data} />
     <div class="stats-container">
       <div class="entry">
         <div class="label">clipping (total):</div>

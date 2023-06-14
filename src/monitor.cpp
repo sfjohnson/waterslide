@@ -45,11 +45,46 @@ static void *startWsApp (UNUSED void *arg) {
   return NULL;
 }
 
+// map an array of bins (unsigned ints) to an array of uint8 values that can be displayed in a heatmap graph
+static void mapStreamMeterBins (unsigned int *rawBins, uint8_t *mappedBins) {
+  unsigned int minBinVal = 0, maxBinVal = 0;
+  for (int i = 0; i < STATS_STREAM_METER_BINS; i++) {
+    // save streamMeterBins so it doesn't change while we are doing the mapping
+    rawBins[i] = globals_get1uiv(statsCh1Audio, streamMeterBins, i);
+    if (i == 0) {
+      minBinVal = maxBinVal = rawBins[i];
+    } else if (rawBins[i] < minBinVal && rawBins[i] > 0) {
+      minBinVal = rawBins[i];
+    } else if (rawBins[i] > maxBinVal) {
+      maxBinVal = rawBins[i];
+    }
+  }
+
+  if (minBinVal == maxBinVal) return; // no dynamic range (probably streamMeterBins is all zeros)
+
+  for (int i = 0; i < STATS_STREAM_METER_BINS; i++) {
+    unsigned int binVal = rawBins[i];
+    if (binVal < minBinVal) {
+      mappedBins[i] = 0;
+      continue;
+    }
+
+    mappedBins[i] = 255 * (binVal - minBinVal) / (maxBinVal - minBinVal);
+    // Make sure streamMeterBins with count > 0 are also > 0 after mapping
+    if (mappedBins[i] == 0) mappedBins[i] = 1;
+  }
+}
+
 static void *statsLoop (UNUSED void *arg) {
   MonitorProto proto;
   MonitorProto_MuxChannelStats *protoCh1 = proto.add_muxchannel();
   MonitorProto_AudioChannel **protoAudioChannels = new MonitorProto_AudioChannel*[audioChannelCount];
   MonitorProto_EndpointStats **protoEndpoints = new MonitorProto_EndpointStats*[endpointCount];
+  unsigned int *streamMeterBinsRaw = new unsigned int[STATS_STREAM_METER_BINS];
+  uint8_t *streamMeterBinsMapped = new uint8_t[STATS_STREAM_METER_BINS];
+
+  memset(streamMeterBinsRaw, 0, sizeof(unsigned int) * STATS_STREAM_METER_BINS);
+  memset(streamMeterBinsMapped, 0, STATS_STREAM_METER_BINS);
 
   for (int i = 0; i < audioChannelCount; i++) {
     protoAudioChannels[i] = protoCh1->mutable_audiostats()->add_audiochannel();
@@ -70,6 +105,7 @@ static void *statsLoop (UNUSED void *arg) {
   // FILE *syncDataFile = fopen("receiver-sync.data", "w+b");
   // int debugCounter = 0;
   // printf("writing to receiver-sync.data...\n");
+  // TODO: need a flag here to break out of the while loop and deinit properly
   while (true) {
     usleep(50000);
     if (wsClient == NULL) continue;
@@ -110,11 +146,14 @@ static void *statsLoop (UNUSED void *arg) {
       protoEndpoints[i]->set_bytesin(globals_get1uiv(statsEndpoints, bytesIn, i));
       protoEndpoints[i]->set_sendcongestion(globals_get1uiv(statsEndpoints, sendCongestion, i));
     }
+    protoCh1->mutable_audiostats()->set_streambuffersize(globals_get1i(statsCh1Audio, streamBufferSize));
     protoCh1->mutable_audiostats()->set_bufferoverruncount(globals_get1ui(statsCh1Audio, bufferOverrunCount));
     protoCh1->mutable_audiostats()->set_bufferunderruncount(globals_get1ui(statsCh1Audio, bufferUnderrunCount));
-    protoCh1->mutable_audiostats()->set_streambufferpos(globals_get1ui(statsCh1Audio, streamBufferPos));
     protoCh1->mutable_audiostats()->set_encodethreadjittercount(globals_get1ui(statsCh1Audio, encodeThreadJitterCount));
     protoCh1->mutable_audiostats()->set_audioloopxruncount(globals_get1ui(statsCh1Audio, audioLoopXrunCount));
+
+    mapStreamMeterBins(streamMeterBinsRaw, streamMeterBinsMapped);
+    protoCh1->mutable_audiostats()->set_streammeterbins(streamMeterBinsMapped, STATS_STREAM_METER_BINS);
 
     switch (globals_get1ui(audio, encoding)) {
       case AUDIO_ENCODING_OPUS:
@@ -133,6 +172,8 @@ static void *statsLoop (UNUSED void *arg) {
 
   delete[] protoAudioChannels;
   delete[] protoEndpoints;
+  delete[] streamMeterBinsRaw;
+  delete[] streamMeterBinsMapped;
   return NULL;
 }
 

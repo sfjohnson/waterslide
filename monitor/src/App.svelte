@@ -1,37 +1,11 @@
 <script>
+  import protobuf from 'protobufjs/dist/protobuf.min'
   import AudioSection from './AudioSection.svelte'
   import BlocksSection from './BlocksSection.svelte'
   import EndpointsSection from './EndpointsSection.svelte'
-  import protobuf from 'protobufjs/dist/protobuf.min'
 
   const wsServerAddr = 'ws://localhost:7681'
 
-  const config = {
-    streamBufferSize: 8192
-  }
-
-  // Example state:
-  // {
-  //   dupBlockCount: 1,
-  //   endpoint: [
-  //     {
-  //       interfaceName: 'lo0',
-  //       open: true,
-  //       dupPacketCount: 1,
-  //       bytesOut: '660',
-  //       bytesIn: '9532310'
-  //     }
-  //   ],
-  //   audioStats: {
-  //     audioChannel: [
-  //       { levelFast: 0.1255815029144287, levelSlow: 0.0423738956451416 },
-  //       { levelFast: 0.11490904539823532, levelSlow: 0.0403149351477623 }
-  //     ],
-  //     streamBufferPos: 4301,
-  //     bufferUnderrunCount: 1,
-  //     opusStats: { codecErrorCount: 1 }
-  //   }
-  // }
   let currentState = {}
 
   const wsClient = new WebSocket(wsServerAddr)
@@ -51,13 +25,8 @@
 <div id="main">
   <h1><span>ch1</span></h1>
   <div class="row">
-    <AudioSection
-      config={config}
-      data={currentState.audioStats}
-    />
-    <BlocksSection
-      data={currentState}
-    />
+    <AudioSection data={currentState.audioStats} />
+    <BlocksSection data={currentState} />
   </div>
 
   <div class="row">

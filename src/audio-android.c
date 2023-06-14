@@ -151,7 +151,7 @@ static void *startAudioLoop (UNUSED void *arg) {
     .stop_threshold = 1000000000
   };
 
-  printf("\nOutput device: hw:%u,%u\n", cardId, deviceId);
+  printf("\n%s device: hw:%u,%u\n", _receiver ? "Output" : "Input", cardId, deviceId);
   printf("Device channels: %u\n", deviceChannelCount);
   printf("%s channels: %d\n", _receiver ? "Receiver" : "Sender", networkChannelCount);
   printf("Device latency (ms): %f\n", 1000.0 * audio_getDeviceLatency());

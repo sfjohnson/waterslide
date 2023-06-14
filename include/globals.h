@@ -14,6 +14,7 @@
 #define SEC_KEEP_ALIVE_INTERVAL 25 // in seconds
 #define ENDPOINT_TICK_INTERVAL 100000 // in microseconds
 #define ENDPOINT_REOPEN_INTERVAL 20 // in ticks (1 tick = 100 ms)
+#define STATS_STREAM_METER_BINS 512
 
 globals_declare1i(root, mode)
 globals_declare1s(root, privateKey)
@@ -74,7 +75,8 @@ globals_declare1ui(statsCh1, oooBlockCount)
 globals_declare1uiv(statsCh1Audio, clippingCounts)
 globals_declare1ffv(statsCh1Audio, levelsFast)
 globals_declare1ffv(statsCh1Audio, levelsSlow)
-globals_declare1ui(statsCh1Audio, streamBufferPos)
+globals_declare1i(statsCh1Audio, streamBufferSize)
+globals_declare1uiv(statsCh1Audio, streamMeterBins)
 globals_declare1ui(statsCh1Audio, bufferOverrunCount)
 globals_declare1ui(statsCh1Audio, bufferUnderrunCount)
 globals_declare1ui(statsCh1Audio, encodeThreadJitterCount)

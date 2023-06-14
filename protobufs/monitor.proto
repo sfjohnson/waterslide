@@ -18,14 +18,15 @@ message MonitorProto {
 
   message AudioStats {
     repeated AudioChannel audioChannel = 1;
-    uint32 streamBufferPos = 2;
-    uint32 bufferOverrunCount = 3;
-    uint32 bufferUnderrunCount = 4;
-    uint32 encodeThreadJitterCount = 5;
-    uint32 audioLoopXrunCount = 6;
+    int32 streamBufferSize = 2;
+    bytes streamMeterBins = 3;
+    uint32 bufferOverrunCount = 4;
+    uint32 bufferUnderrunCount = 5;
+    uint32 encodeThreadJitterCount = 6;
+    uint32 audioLoopXrunCount = 7;
     oneof encoding {
-      OpusStats opusStats = 7;
-      PCMStats pcmStats = 8;
+      OpusStats opusStats = 8;
+      PCMStats pcmStats = 9;
     }
   }
 

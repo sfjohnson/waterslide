@@ -22,7 +22,7 @@
 static ck_ring_t encodeRing;
 static ck_ring_buffer_t *encodeRingBuf;
 static mux_transfer_t transfer;
-static int targetEncodeRingSize;
+static int targetEncodeRingSize, encodeRingMaxSize;
 static int audioFrameSize;
 static int maxEncodedPacketSize;
 static double networkSampleRate; // Hz
@@ -114,7 +114,7 @@ static void *startEncodeLoop (UNUSED void *arg) {
   while (encodeLoopStatus == 1) {
     int encodeRingSize = ck_ring_size(&encodeRing);
     int encodeRingSizeFrames = encodeRingSize / networkChannelCount;
-    globals_set1ui(statsCh1Audio, streamBufferPos, encodeRingSizeFrames);
+    globals_add1uiv(statsCh1Audio, streamMeterBins, STATS_STREAM_METER_BINS * encodeRingSize / encodeRingMaxSize, 1);
 
     if (encodeRingSizeFrames < audioFrameSize) {
       nanosleep(&loopSleep, NULL);
@@ -248,7 +248,8 @@ int sender_init (void) {
   // In theory the encode thread should loop often enough that the encodeRing never gets much larger than
   // targetEncodeRingSize, but we multiply by 4 to allow plenty of room in encodeRing
   // for timing jitter caused by the operating system's scheduler. Also ck requires a power of two size.
-  int encodeRingMaxSize = utils_roundUpPowerOfTwo(4 * targetEncodeRingSize);
+  encodeRingMaxSize = utils_roundUpPowerOfTwo(4 * targetEncodeRingSize);
+  globals_set1i(statsCh1Audio, streamBufferSize, encodeRingMaxSize / networkChannelCount);
 
   encodeRingBuf = (ck_ring_buffer_t*)malloc(sizeof(ck_ring_buffer_t) * encodeRingMaxSize);
   if (encodeRingBuf == NULL) return -30;

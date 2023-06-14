@@ -27,17 +27,19 @@ static float *sampleBufFloat;
 static uint8_t *audioEncodedBuf;
 static int audioEncodedBufPos = 0;
 static bool slipEsc = false;
+static double avgAudioFramesPerBlock = 0.0;
 
-static void decodePacket (const uint8_t *buf, int len) {
+// returns: number of audio frames added to decodeRing (after resampling), or negative error code
+static int decodePacket (const uint8_t *buf, int len) {
   static bool overrun = false;
 
-  if (len < 2) return;
+  if (len < 2) return -1;
   int seq = utils_readU16LE(buf);
   buf += 2;
   len -= 2;
 
   int ringCurrentSize = ck_ring_size(&decodeRing);
-  globals_set1ui(statsCh1Audio, streamBufferPos, ringCurrentSize / networkChannelCount);
+  globals_add1uiv(statsCh1Audio, streamMeterBins, STATS_STREAM_METER_BINS * ringCurrentSize / decodeRingMaxSize, 1);
 
   const uint8_t *pcmSamples;
   int result;
@@ -46,20 +48,20 @@ static void decodePacket (const uint8_t *buf, int len) {
     result = opus_multistream_decode_float(decoder, buf, len, sampleBufFloat, audioFrameSize, 0);
     if (result != audioFrameSize) {
       globals_add1ui(statsCh1AudioOpus, codecErrorCount, 1);
-      return;
+      return -2;
     }
   } else { // audioEncoding == AUDIO_ENCODING_PCM
     result = pcm_decode(&pcmDecoder, buf, len, &pcmSamples);
     if (result != networkChannelCount * audioFrameSize) {
       if (result == -3) globals_add1ui(statsCh1AudioPCM, crcFailCount, 1);
-      return;
+      return -3;
     }
   }
 
   if (overrun) {
     // Let the audio callback empty the ring to about half-way before pushing to it again.
     if (ringCurrentSize > decodeRingMaxSize / 2) {
-      return;
+      return 0;
     } else {
       overrun = false;
     }
@@ -70,10 +72,28 @@ static void decodePacket (const uint8_t *buf, int len) {
   } else { // audioEncoding == AUDIO_ENCODING_PCM
     result = syncer_enqueueBufS24(pcmSamples, audioFrameSize, networkChannelCount, false, seq);
   }
-  if (result == -3) overrun = true;
+  if (result == -3) {
+    overrun = true;
+    return -4;
+  }
+
+  return result;
 }
 
+static void enqueueSilence (int frameCount) {
+  int totalSamples = networkChannelCount * frameCount;
+  // Don't ever let the ring fill completely, that way the channels stay in order
+  if ((int)ck_ring_size(&decodeRing) + totalSamples > decodeRingMaxSize) return;
+
+  for (int i = 0; i < totalSamples; i++) {
+    ck_ring_enqueue_spsc(&decodeRing, decodeRingBuf, (void*)0);
+  }
+}
+
+// returns: number of audio frames added to decodeRing (after resampling), or negative error code
 static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
+  int result = 0;
+
   for (int i = 0; i < bufLen; i++) {
     if (slipEsc) {
       if (buf[i] == 0xdc) {
@@ -91,7 +111,13 @@ static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
 
     if (buf[i] == 0xc0) {
       if (audioEncodedBufPos == 0) continue;
-      decodePacket(audioEncodedBuf, audioEncodedBufPos);
+      int frameCount = decodePacket(audioEncodedBuf, audioEncodedBufPos);
+      // Only return total frame count if all calls to decodePacket were successful
+      if (result < 0 || frameCount < 0) {
+        result = -4; // decodePacket returned an error, either this time or previously
+      } else if (result >= 0) {
+        result += frameCount;
+      }
       audioEncodedBufPos = 0;
       continue;
     }
@@ -99,12 +125,12 @@ static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
     if (buf[i] == 0xdb) {
       slipEsc = true;
     } else {
-      if (audioEncodedBufPos >= maxEncodedPacketSize) return -4;
+      if (audioEncodedBufPos >= maxEncodedPacketSize) return -5;
       audioEncodedBuf[audioEncodedBufPos++] = buf[i];
     }
   }
 
-  return bufLen;
+  return result;
 }
 
 // The channel lock in the demux module protects the static variables accessed here
@@ -121,17 +147,20 @@ static void onBlockCh1 (const uint8_t *buf, int sbn) {
     }
 
     if (sbnDiff == 0) {
-      // Duplicate block, ignore
+      // Duplicate block
       globals_add1ui(statsCh1, dupBlockCount, 1);
       tryDecode = false;
     } else if (sbnDiff < 0) {
-      // Out-of-order old block, ignore
+      // Out-of-order old block
       globals_add1ui(statsCh1, oooBlockCount, 1);
       tryDecode = false;
     } else if (sbnDiff > 1) {
       int blockDroppedCount = sbnDiff - 1;
       // Out-of-order, previous block(s) were dropped
       globals_add1ui(statsCh1, oooBlockCount, blockDroppedCount);
+      // Fill in decodeRing with zeros based on average block size plus
+      // one assumed lost packet due to resetting of SLIP state
+      enqueueSilence((int)(blockDroppedCount * avgAudioFramesPerBlock) + audioFrameSize);
       audioEncodedBufPos = 0;
       slipEsc = false;
       tryDecode = false;
@@ -144,7 +173,14 @@ static void onBlockCh1 (const uint8_t *buf, int sbn) {
   if (!tryDecode) return;
 
   int result = slipDecodeBlock(buf, channel1.symbolsPerBlock * channel1.symbolLen);
-  if (result < 0) {
+  if (result >= 0) {
+    avgAudioFramesPerBlock += 0.003 * ((double)result - avgAudioFramesPerBlock);
+    // DEBUG: log
+    // globals_set1uiv(statsEndpoints, bytesOut, 0, (unsigned int)(1000000.0f * avgAudioFramesPerBlock));
+  } else if (result == -4) {
+    // decodePacket error
+  } else {
+    // SLIP error
     audioEncodedBufPos = 0;
     slipEsc = false;
   }
@@ -153,7 +189,6 @@ static void onBlockCh1 (const uint8_t *buf, int sbn) {
 int receiver_init (void) {
   networkChannelCount = globals_get1i(audio, networkChannelCount);
   audioEncoding = globals_get1ui(audio, encoding);
-  int decodeRingLength;
 
   switch (audioEncoding) {
     case AUDIO_ENCODING_OPUS:
@@ -170,8 +205,8 @@ int receiver_init (void) {
       return -1;
   }
 
-  decodeRingLength = globals_get1i(audio, decodeRingLength);
-  decodeRingMaxSize = networkChannelCount * decodeRingLength;
+  decodeRingMaxSize = networkChannelCount * globals_get1i(audio, decodeRingLength);
+  globals_set1i(statsCh1Audio, streamBufferSize, globals_get1i(audio, decodeRingLength));
   // ck requires the size to be a power of two but we will pretend decodeRing contains
   // decodeRingMaxSize number of double values, and ignore the rest.
   int decodeRingAllocSize = utils_roundUpPowerOfTwo(decodeRingMaxSize);

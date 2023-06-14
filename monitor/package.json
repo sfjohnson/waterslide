@@ -8,12 +8,15 @@
   },
   "author": "sfjohnson",
   "license": "MPL-2.0",
-  "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^1.0.0-next.11",
-    "svelte": "^3.37.0",
-    "vite": "^2.4.2"
-  },
   "dependencies": {
     "protobufjs": "^7.1.2"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^2.4.1",
+    "@tsconfig/svelte": "^4.0.1",
+    "svelte": "^3.59.1",
+    "typescript": "^5.1.3",
+    "vite": "^4.3.9",
+    "vite-plugin-glsl": "^1.1.2"
   }
 }

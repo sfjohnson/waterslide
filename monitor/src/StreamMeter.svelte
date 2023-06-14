@@ -1,6 +1,9 @@
-<script>
-  export let bufferSize = 1024
-  export let data = {}
+<script lang="ts">
+  import ShaderBox from './ShaderBox.svelte'
+  import meterBoxFrag from '../shaders/stream-meter.frag'
+  import meterBoxVert from '../shaders/basic.vert'
+
+  export let data: App.AudioStats = {}
 
   const meterHeight = 300
   const levelDiv = 8
@@ -8,9 +11,41 @@
   const activeMeterHeight = meterHeight - 2*endMarkerHeight
 
   let markers = [
-    { active: false, prevCount: 0, timeout: null }, // underrun
-    { active: false, prevCount: 0, timeout: null } // overrun
+    { prevCount: 0, timeout: null }, // underrun
+    { prevCount: 0, timeout: null } // overrun
   ]
+
+  let meterBoxUniforms = null
+
+  const setMarkerUniform = (index: number, active: boolean) => {
+    if (meterBoxUniforms === null) return
+
+    if (index === 0) {
+      meterBoxUniforms.uUnderrun = active ? 1.0 : 0.0
+    } else {
+      meterBoxUniforms.uOverrun = active ? 1.0 : 0.0
+    }
+  }
+
+  $: if (meterBoxUniforms === null && data.streamMeterBins) {
+    meterBoxUniforms = {
+      uBins: {
+        buffer: new Uint8Array(data.streamMeterBins.length),
+        length: data.streamMeterBins.length
+      },
+      uUnderrun: 0.0,
+      uOverrun: 0.0
+    }
+  }
+
+  $: if (meterBoxUniforms !== null) {
+    // copying data.streamMeterBins is necessary because it might be unaligned (to 4 bytes) due to the way protobuf parsed it
+    const bufferCopy = new Uint8Array(data.streamMeterBins.length)
+    bufferCopy.set(data.streamMeterBins)
+    meterBoxUniforms.uBins.buffer = bufferCopy
+  }
+
+  $: bufferSize = data.streamBufferSize || 1024
 
   $: if (data.bufferUnderrunCount || data.bufferOverrunCount) {
     for (let i = 0; i < markers.length; i++) {
@@ -18,15 +53,13 @@
       const currentCount = i === 0 ? data.bufferUnderrunCount : data.bufferOverrunCount
       if (currentCount > marker.prevCount) {
         clearTimeout(marker.timeout)
-        marker.active = true
-        marker.timeout = setTimeout(() => {
-          marker.active = false
-          markers = markers
-        }, 4000)
+        setMarkerUniform(i, true)
+        marker.timeout = setTimeout((markerIndex) => {
+          setMarkerUniform(markerIndex, false)
+        }, 4000, i)
       }
       marker.prevCount = currentCount
     }
-    markers = markers
   }
 
   $: levelMarkers = Array.from(new Array(levelDiv + 1), (_, i) => {
@@ -35,8 +68,6 @@
       pos: endMarkerHeight + activeMeterHeight*i / levelDiv
     }
   })
-
-  $: posMarkerTop = activeMeterHeight * (1 - data.streamBufferPos/(bufferSize-1)) + endMarkerHeight
 </script>
 
 <div class="container">
@@ -49,50 +80,20 @@
     {/each}
   </div>
 
-  <div class="meter-bar">
-    <div class="{markers[1].active ? "active-marker marker" : "marker"}"></div>
-    <div class="fill"></div>
-    <div class="pos-marker" style="top: {posMarkerTop}px;"></div>
-    <div class="{markers[0].active ? "active-marker marker" : "marker"}"></div>
-  </div>
+  <ShaderBox
+    class="meter-box"
+    width={10}
+    height={300}
+    vertShaderCode={meterBoxVert}
+    fragShaderCode={meterBoxFrag}
+    uniforms={meterBoxUniforms}
+  />
 </div>
 
 <style>
   .container {
     display: flex;
     margin-left: 50px;
-  }
-
-  .meter-bar {
-    display: flex;
-    justify-content: flex-end;
-    flex-direction: column;
-    width: 10px;
-    height: 300px;
-    margin-right: 3px;
-    background-color: black;
-    position: relative;
-  }
-
-  .marker {
-    width: 10px;
-    height: 3px;
-    background-color: #ccc;
-  }
-
-  .active-marker {
-    background-color: red;
-  }
-
-  .fill {
-    flex: 1;
-  }
-
-  .pos-marker {
-    width: 10px;
-    height: 1px;
-    background-color: rgb(74, 216, 74);
-    position: absolute;
   }
 
   .markers-container {
