@@ -16,8 +16,7 @@ echo "Downloading waterslide dependencies"
 ./pull-deps.sh
 
 echo "Make waterslide"
-make -f macos10.mk clean
-make -f macos-arm64.mk clean
+make -f macos.mk clean
 make -f android30.mk
 
 cp bin/waterslide-android30 waterslide-android-dist/bin

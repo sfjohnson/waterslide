@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-macos:
-    runs-on: macos-10.15
+    runs-on: macos-11
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -18,9 +18,10 @@ jobs:
         run: |
           ./pull-deps.sh
           brew install openssl@3
+          brew install llvm@16
 
       - name: Make
-        run: make -f macos10.mk
+        run: make -f macos.mk
 
   build-android:
     runs-on: ubuntu-20.04

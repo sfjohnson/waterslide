@@ -36,7 +36,7 @@ Realtime audio transport with multihoming.
 
 ## Setup (common)
 
-1. Install Node.js 16 and npm 8
+1. Install Node.js 18 and npm 9
 
 2. Run
 ```sh
@@ -46,6 +46,8 @@ cd waterslide
 ```
 
 ## Setup (macOS specific)
+
+Supported platforms: macOS >= 11, Intel or Apple silicon
 
 1. Install Homebrew
 2. Run
@@ -62,16 +64,10 @@ brew install llvm@16
 export ANDROID_NDK_HOME=/Users/<username>/Library/Android/sdk/ndk/21.4.7075529
 ```
 
-## Build macOS 11.x
+## Build macOS
 
 ```sh
-make -f macos11.mk
-```
-
-## Build Apple silicon
-
-```sh
-make -f macos-arm64.mk
+make -f macos.mk
 ```
 
 ## Build Android (binary only)

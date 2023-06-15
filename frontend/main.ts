@@ -22,7 +22,7 @@ switch (platformAndArch) {
     break
 
   case 'darwin-x64':
-    binPath += '-macos10'
+    binPath += '-macos11'
     break
 
   case 'android-arm64':

@@ -6,7 +6,7 @@ USERNAME=sfjohnson
 if [[ $(uname -m) == 'arm64' ]]; then
   ARCH=macos-arm64
 else
-  ARCH=macos10
+  ARCH=macos11
 fi
 
 download () {
