@@ -91,6 +91,8 @@ static void *startEncodeLoop (UNUSED void *arg) {
     return NULL;
   }
 
+  raptorq_initEncoder(fecBlockBaseLen, sourceSymbolsPerBlock);
+
   // Sleep for 30% of our desired interval time to make sure encodeRingSize doesn't get too full despite OS jitter.
   double targetSizeNs = 300000000.0 * targetEncodeRingSize / (double)(networkChannelCount * networkSampleRate);
   struct timespec loopSleep;
@@ -164,12 +166,9 @@ static void *startEncodeLoop (UNUSED void *arg) {
     }
 
     while (fecBlockPos >= fecBlockBaseLen) {
-      // DEBUG: raptorq_encodeBlock needs optimisation, it can be slow enough on Android (>9 ms) to cause encodeThreadJitterCount to increase
       int fecEncodedLen = raptorq_encodeBlock(
         fecSBN++,
         fecBlockBuf,
-        fecBlockBaseLen,
-        sourceSymbolsPerBlock,
         fecEncodedBuf,
         sourceSymbolsPerBlock + repairSymbolsPerBlock
       );
