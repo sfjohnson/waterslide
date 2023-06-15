@@ -48,10 +48,10 @@ cd waterslide
 ## Setup (macOS specific)
 
 1. Install Homebrew
-2. Run (note `llvm@13` is only required on older macOS versions. Check using `clang -v`)
+2. Run
 ```sh
 brew install openssl@3
-brew install llvm@13
+brew install llvm@16
 ```
 
 ## Setup (Android specific)
@@ -62,10 +62,10 @@ brew install llvm@13
 export ANDROID_NDK_HOME=/Users/<username>/Library/Android/sdk/ndk/21.4.7075529
 ```
 
-## Build macOS 10.x
+## Build macOS 11.x
 
 ```sh
-make -f macos10.mk
+make -f macos11.mk
 ```
 
 ## Build Apple silicon

@@ -44,14 +44,14 @@ download () {
 rm -rf lib/$ARCH lib/android30 include/deps
 mkdir -p bin lib/$ARCH lib/android30 licenses
 
-download all     v21.12.0     protobuf         libprotobuf-lite
-download all     v0.7.16      ck               libck
+download all     v21.12.1     protobuf         libprotobuf-lite
+download all     v0.7.17      ck               libck
 download android v2.1.0       tinyalsa         libtinyalsa
-download macos   v19.7.4      portaudio        libportaudio
-download all     v6.2.2       r8brain-free-src libr8brain
-download all     v1.4.10      opus             libopus
+download macos   v19.7.5      portaudio        libportaudio
+download all     v6.2.3       r8brain-free-src libr8brain
+download all     v1.4.11      opus             libopus
 download all     v1.8.0       raptorq          libraptorq
-download all     v19.7.14     uWebSockets      libuwebsockets
+download all     v19.7.22     uWebSockets      libuwebsockets
 download all     v0.5.9       boringtun        libboringtun
 
 echo "Fixing protobuf include path..."

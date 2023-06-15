@@ -1,12 +1,15 @@
-CC = /usr/bin/clang
-CPP = /usr/bin/clang
+# Uses Homebrew clang, tested with version 16
+LLVM_PATH := $(shell brew --prefix llvm@16)
+OPENSSL_PATH := $(shell brew --prefix openssl@3)
+CC = $(LLVM_PATH)/bin/clang
+CPP = $(LLVM_PATH)/bin/clang
 PROTOC = bin/protoc
 PROTOCFLAGS = --cpp_out=.
 # CFLAGS = -g3 -fno-omit-frame-pointer -fsanitize=address
 # LIBS = -g3 -fno-omit-frame-pointer -fsanitize=address
-CFLAGS = -std=c17 -O3 -flto -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I/opt/homebrew/opt/openssl@3/include
-CPPFLAGS = -std=c++17 -O3 -flto -fstrict-aliasing -Wno-gnu-anonymous-struct -Wno-nested-anon-types -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I/opt/homebrew/opt/openssl@3/include
-LDFLAGS = -Llib/macos-arm64 -L/opt/homebrew/opt/openssl@3/lib -pthread -flto
+CFLAGS = -std=c17 -O3 -flto -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I$(OPENSSL_PATH)/include
+CPPFLAGS = -std=c++17 -O3 -flto -fstrict-aliasing -Wno-gnu-anonymous-struct -Wno-nested-anon-types -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I$(OPENSSL_PATH)/include
+LDFLAGS = -Llib/macos-arm64 -L$(OPENSSL_PATH)/lib -pthread -flto
 LIBS = -lstdc++ -lm -lz -lopus -lportaudio -lr8brain -lraptorq -lck -lssl -lcrypto -luwebsockets -lprotobuf-lite -lboringtun -framework CoreAudio -framework AudioUnit -framework AudioToolbox -framework CoreServices -framework Security
 
 TARGET = waterslide-macos-arm64
