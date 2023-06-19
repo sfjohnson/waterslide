@@ -11,7 +11,7 @@
 #define MAX_NET_IF_NAME_LEN 20
 #define MAX_AUDIO_CHANNELS 64
 #define SEC_KEY_LENGTH 44 // Length of base 64 encoded key string in chars, not including null terminator.
-#define SEC_KEEP_ALIVE_INTERVAL 25 // in seconds
+#define SEC_KEEP_ALIVE_INTERVAL 1 // in seconds
 #define ENDPOINT_TICK_INTERVAL 100000 // in microseconds
 #define ENDPOINT_REOPEN_INTERVAL 20 // in ticks (1 tick = 100 ms)
 #define STATS_STREAM_METER_BINS 512
