@@ -93,7 +93,7 @@ tar xf waterslide-android-dist.tar.bz2
 4. Run frontend script (must be root):
 ```sh
 cd waterslide-android-dist
-./waterslide <config-file>
+./waterslide OPTION CONFIG
 ```
 
 ## Frontend
@@ -112,9 +112,24 @@ Built files go to the `frontend/out` folder.
 
 ### Run frontend
 
+Usage (distributable tar):
 ```sh
-cd frontend
-npm start config.json
+./waterslide OPTION CONFIG
+```
+
+Usage (development):
+```sh
+npm start -- OPTION CONFIG
+```
+
+Options:
+```
+-f JSON_FILE      Read config from a JSON file and launch waterslide.
+-p PROTOBUF       Read config from a Base64 encoded protobuf message
+                  literal that was encoded by init-config.proto and
+                  launch waterslide.
+-e JSON_FILE      Encode a JSON file using init-config.proto and output
+                  the message as Base64, without launching waterslide.
 ```
 
 ## Discovery server

@@ -91,6 +91,7 @@ message InitConfigProto {
 
   message Monitor {
     int32 wsPort = 1;
+    int32 uiPort = 2;
   }
 
   Mode mode = 1;
