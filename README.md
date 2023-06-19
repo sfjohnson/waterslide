@@ -221,7 +221,8 @@ See `protobufs/init-config.proto` and `include/globals.h` for more information.
     "repairSymbolsPerBlock": 3
   },
   "monitor": {
-    "wsPort": 7681
+    "wsPort": 7681,
+    "uiPort": 8080
   }
 }
 ```
@@ -269,7 +270,8 @@ See `protobufs/init-config.proto` and `include/globals.h` for more information.
     "repairSymbolsPerBlock": 3
   },
   "monitor": {
-    "wsPort": 7681
+    "wsPort": 7681,
+    "uiPort": 8080
   }
 }
 ```
@@ -364,7 +366,8 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
     "repairSymbolsPerBlock": 3
   },
   "monitor": {
-    "wsPort": 7681
+    "wsPort": 7681,
+    "uiPort": 8080
   }
 }
 ```
@@ -411,7 +414,8 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
     "repairSymbolsPerBlock": 3
   },
   "monitor": {
-    "wsPort": 7681
+    "wsPort": 7681,
+    "uiPort": 8080
   }
 }
 ```

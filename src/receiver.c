@@ -18,7 +18,6 @@ static pcm_codec_t pcmDecoder = { 0 };
 static demux_channel_t channel1 = { 0 };
 static ck_ring_t decodeRing;
 static ck_ring_buffer_t *decodeRingBuf;
-static int sbnLast = -1;
 
 static unsigned int audioEncoding;
 static int networkChannelCount;
@@ -135,6 +134,7 @@ static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
 
 // The channel lock in the demux module protects the static variables accessed here
 static void onBlockCh1 (const uint8_t *buf, int sbn) {
+  static int sbnLast = -1;
   bool tryDecode = true;
 
   if (sbnLast != -1) {
@@ -205,8 +205,9 @@ int receiver_init (void) {
       return -1;
   }
 
-  decodeRingMaxSize = networkChannelCount * globals_get1i(audio, decodeRingLength);
-  globals_set1i(statsCh1Audio, streamBufferSize, globals_get1i(audio, decodeRingLength));
+  int decodeRingLength = globals_get1i(audio, decodeRingLength);
+  decodeRingMaxSize = networkChannelCount * decodeRingLength;
+  globals_set1i(statsCh1Audio, streamBufferSize, decodeRingLength);
   // ck requires the size to be a power of two but we will pretend decodeRing contains
   // decodeRingMaxSize number of double values, and ignore the rest.
   int decodeRingAllocSize = utils_roundUpPowerOfTwo(decodeRingMaxSize);
@@ -236,6 +237,7 @@ int receiver_init (void) {
   }
 
   ck_ring_init(&decodeRing, decodeRingAllocSize);
+  // enqueueSilence(decodeRingLength / 2);
 
   char privateKey[SEC_KEY_LENGTH + 1] = { 0 };
   char peerPublicKey[SEC_KEY_LENGTH + 1] = { 0 };
@@ -254,6 +256,7 @@ int receiver_init (void) {
   err = audio_start(&decodeRing, decodeRingBuf, decodeRingMaxSize);
   if (err < 0) return err - 13;
 
+  // NOTE: endpointsec_init will block until network discovery is completed
   err = endpointsec_init(demux_readPacket);
   if (err < 0) return err - 17;
 

@@ -60,7 +60,10 @@ process.on('SIGHUP', () => { })
 process.on('SIGQUIT', () =>{ })
 process.on('SIGTERM', () => { })
 
-app.use(express.static(path.join(__dirname, '../monitor')))
-app.listen(8080, () => {
-  console.log('Serving monitor on port 8080')
-})
+const port = configFile.monitor.uiPort
+if (typeof port === 'number') {
+  app.use(express.static(path.join(__dirname, '../monitor')))
+  app.listen(port, () => {
+    console.log(`Serving monitor on port ${port}`)
+  })
+}

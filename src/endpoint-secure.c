@@ -19,8 +19,8 @@ static int endpointCount = 0;
 static wsocket_t *sockets = NULL; // length: endpointCount
 static pthread_t *discoveryThreads = NULL; // length: endpointCount
 static pthread_t tickThread;
-static atomic_bool threadsRunning = false;
-static struct wireguard_tunnel *tunnel = NULL;
+static _Atomic(struct wireguard_tunnel *)tunnel = NULL; // _Atomic specifier protects tunnel var when being set to or from NULL. The struct fields are protected by a mutex in the Rust code.
+static atomic_bool tunnelUp = false;
 static uint8_t *wgReadBuf;
 static int (*_onPacket)(const uint8_t*, int, int) = NULL;
 
@@ -52,7 +52,7 @@ static void *tickLoop (UNUSED void *arg) {
   utils_setCallerThreadPrioHigh();
   #endif
 
-  while (threadsRunning) {
+  while (tunnel != NULL) {
     // for (int i = 0; i < endpointCount; i++) {
     //   if (sockets[i].timeToReopen == 1) {
     //     if (openSocket(i) < 0) {
@@ -67,6 +67,13 @@ static void *tickLoop (UNUSED void *arg) {
     //   }
     // }
 
+    if (!tunnelUp) {
+      struct stats tunnelStats = wireguard_stats(tunnel);
+      if (tunnelStats.time_since_last_handshake >= 0) {
+        tunnelUp = true;
+      }
+    }
+
     result = wireguard_tick(tunnel, tickBuf, sizeof(tickBuf));
     if (result.op == WRITE_TO_NETWORK) sendBufToAll(tickBuf, result.size);
 
@@ -78,6 +85,8 @@ static void *tickLoop (UNUSED void *arg) {
 
 // NOTE: this is called by multiple threads
 static int onPeerPacket (const uint8_t *buf, int bufLen, int epIndex) {
+  if (tunnel == NULL) return 0;
+
   // Accounts for IP and UDP headers
   // TODO: This assumes IPv4
   globals_add1uiv(statsEndpoints, bytesIn, epIndex, bufLen + 28);
@@ -165,38 +174,41 @@ int endpointsec_init (int (*onPacket)(const uint8_t*, int, int)) {
     if (err < 0) return err - 4;
   }
 
+  for (intptr_t i = 0; i < endpointCount; i++) {
+    if (pthread_create(&discoveryThreads[i], NULL, startDiscovery, (void*)i) != 0) return -15;
+  }
+
+  for (intptr_t i = 0; i < endpointCount; i++) {
+    if (pthread_join(discoveryThreads[i], NULL) != 0) return -16;
+  }
+
+  // All endpoints are now in GotPeerAddr state
+
   // Preshared keys are optional: https://www.procustodibus.com/blog/2021/09/wireguard-key-rotation/#preshared-keys
   tunnel = new_tunnel(privKeyStr, peerPubKeyStr, NULL, SEC_KEEP_ALIVE_INTERVAL, 0);
-  if (tunnel == NULL) return -15;
+  if (tunnel == NULL) return -17;
+
+  err = pthread_create(&tickThread, NULL, tickLoop, NULL);
+  if (err != 0) return -18;
 
   // Set all the endpoints to open for stats
   for (int i = 0; i < endpointCount; i++) {
     globals_set1uiv(statsEndpoints, open, i, 1);
   }
 
-  threadsRunning = true;
-
-  err = pthread_create(&tickThread, NULL, tickLoop, NULL);
-  if (err != 0) return -16;
-
-  for (intptr_t i = 0; i < endpointCount; i++) {
-    err = pthread_create(&discoveryThreads[i], NULL, startDiscovery, (void*)i);
-    if (err != 0) return -17;
-  }
-
-  // DEBUG: gotta pthread_join all the discoveryThreads
-
   return 0;
 }
 
 // NOTE: this function is not thread safe due to srcBuf and dstBuf being static.
 int endpointsec_send (const uint8_t *buf, int bufLen) {
+  if (tunnel == NULL || !tunnelUp) return -1;
+
   // This buffer starts with a fake IPv4 header that passes BoringTun's packet checks.
   static uint8_t srcBuf[1500] = { 0x45, 0x00, 0x00, 0x00 };
   static const int maxSrcDataLen = sizeof(srcBuf) - 20;
   static uint8_t dstBuf[1500] = { 0 };
 
-  if (bufLen > maxSrcDataLen) return -1;
+  if (bufLen > maxSrcDataLen) return -2;
 
   int srcBufLen = bufLen + 20;
   // Set length field in the fake header as it is checked by BoringTun.
@@ -215,6 +227,7 @@ int endpointsec_send (const uint8_t *buf, int bufLen) {
 }
 
 void endpointsec_deinit (void) {
+  tunnelUp = false;
   if (tunnel != NULL) tunnel_free(tunnel);
 
   // TODO

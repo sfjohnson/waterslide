@@ -223,6 +223,7 @@ int sender_init (void) {
     return -4;
   }
 
+  // NOTE: endpointsec_init will block until network discovery is completed
   int err = endpointsec_init(NULL);
   if (err < 0) return err - 4;
 
