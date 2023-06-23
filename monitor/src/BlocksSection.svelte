@@ -1,13 +1,15 @@
-<script>
+<script lang="ts">
   import TimingGraph from './TimingGraph.svelte'
 
-  export let data = {}
+  export let data: App.MonitorData = {}
+  let totalTimeS: number // in seconds
+  let maxRelTimeMs: number // in milliseconds
 </script>
 
 <div class="container">
   <h1><span>blocks</span></h1>
   <div class="sub-container">
-    <TimingGraph />
+    <TimingGraph bind:totalTimeS={totalTimeS} bind:maxRelTimeMs={maxRelTimeMs} data={data.blockTiming} />
     <div class="stats-container">
       <div class="entry">
         <div class="label">duplicated:</div>
@@ -17,19 +19,24 @@
         <div class="label">out-of-order:</div>
         <div class="value">{data.oooBlockCount}</div>
       </div>
+      <div class="entry">
+        <div class="label">max gap (last {(totalTimeS || 0).toFixed(1)} s):</div>
+        <div class="value">{(maxRelTimeMs || 0).toFixed(1)} ms</div>
+      </div>
     </div>
   </div>
 </div>
 
 <style>
   .container {
-    /* background-color: rgb(230, 230, 230); */
     display: flex;
     flex-direction: column;
+    margin-bottom: 20px;
   }
 
   .sub-container {
     display: flex;
+    flex-direction: column;
   }
 
   h1 {
@@ -48,7 +55,7 @@
     display: flex;
     flex-direction: column;
     font-size: 16px;
-    margin-left: 20px;
+    margin-top: 10px;
   }
 
   .entry {
@@ -62,6 +69,6 @@
   }
 
   .entry .value {
-    min-width: 100px;
+    min-width: 135px;
   }
 </style>

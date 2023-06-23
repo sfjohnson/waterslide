@@ -52,7 +52,7 @@
     /* background-color: rgb(230, 230, 230); */
     display: flex;
     flex-direction: column;
-    margin-right: 20px;
+    margin: 0px 20px 20px 0px;
   }
 
   .sub-container {

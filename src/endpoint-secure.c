@@ -100,9 +100,10 @@ static int onPeerPacket (const uint8_t *buf, int bufLen, int epIndex) {
       case WIREGUARD_ERROR:
         // Multihoming will cause WireGuard errors due to dup packets.
         // We are safe to ignore this.
-        // DEBUG: log
         if (result.size != 11) { // DuplicateCounter
-          printf("wg error: %zu\n", result.size);
+          // TODO: Investigate wg errors when using multihoming.
+          // I have observed errors 10, 7 and 2 but they don't seem to cause any issues higher up the stack.
+          // printf("wg error: %zu\n", result.size);
         }
         return 0;
 
@@ -129,7 +130,7 @@ static void *startDiscovery (void *arg) {
   intptr_t epIndex = (intptr_t)arg;
   wsocket_waitForPeerAddr(&sockets[epIndex]);
 
-  // DEBUG: log
+  // DEBUG: inet_ntop fails on Android
   char addrString[15] = { 0 };
   inet_ntop(AF_INET, &sockets[epIndex].peerAddr, addrString, sizeof(addrString));
   printf("(epIndex %ld) got peer addr %s:%d\n", epIndex, addrString, ntohs(sockets[epIndex].peerPort));

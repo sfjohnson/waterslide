@@ -75,6 +75,17 @@ static void mapStreamMeterBins (unsigned int *rawBins, uint8_t *mappedBins) {
   }
 }
 
+// map a ring buffer to a flat buffer, excluding the element at the write head
+static void mapBlockTimingRing (uint8_t *dest) {
+  unsigned int ringPos = globals_get1ui(statsCh1, blockTimingRingPos);
+  if (++ringPos == STATS_BLOCK_TIMING_RING_LEN) ringPos = 0;
+  for (int i = 0; i < STATS_BLOCK_TIMING_RING_LEN - 1; i++) {
+    unsigned int val = globals_get1uiv(statsCh1, blockTimingRing, ringPos);
+    memcpy(&dest[4*i], &val, 4);
+    if (++ringPos == STATS_BLOCK_TIMING_RING_LEN) ringPos = 0;
+  }
+}
+
 static void *statsLoop (UNUSED void *arg) {
   MonitorProto proto;
   MonitorProto_MuxChannelStats *protoCh1 = proto.add_muxchannel();
@@ -82,6 +93,7 @@ static void *statsLoop (UNUSED void *arg) {
   MonitorProto_EndpointStats **protoEndpoints = new MonitorProto_EndpointStats*[endpointCount];
   unsigned int *streamMeterBinsRaw = new unsigned int[STATS_STREAM_METER_BINS];
   uint8_t *streamMeterBinsMapped = new uint8_t[STATS_STREAM_METER_BINS];
+  uint8_t *blockTimingRingMapped = new uint8_t[4 * (STATS_BLOCK_TIMING_RING_LEN-1)];
 
   memset(streamMeterBinsRaw, 0, sizeof(unsigned int) * STATS_STREAM_METER_BINS);
   memset(streamMeterBinsMapped, 0, STATS_STREAM_METER_BINS);
@@ -133,6 +145,9 @@ static void *statsLoop (UNUSED void *arg) {
 
     protoCh1->set_dupblockcount(globals_get1ui(statsCh1, dupBlockCount));
     protoCh1->set_oooblockcount(globals_get1ui(statsCh1, oooBlockCount));
+    mapBlockTimingRing(blockTimingRingMapped);
+    protoCh1->set_blocktiming(blockTimingRingMapped, 4 * (STATS_BLOCK_TIMING_RING_LEN-1));
+
     int lastSbn0 = globals_get1iv(statsCh1Endpoints, lastSbn, 0);
     for (int i = 0; i < endpointCount; i++) {
       int relSbn = globals_get1iv(statsCh1Endpoints, lastSbn, i) - lastSbn0;
@@ -174,6 +189,7 @@ static void *statsLoop (UNUSED void *arg) {
   delete[] protoEndpoints;
   delete[] streamMeterBinsRaw;
   delete[] streamMeterBinsMapped;
+  delete[] blockTimingRingMapped;
   return NULL;
 }
 

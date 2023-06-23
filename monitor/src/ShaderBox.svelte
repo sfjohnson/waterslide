@@ -1,9 +1,10 @@
 <script lang="ts">
   // Supported uniform types:
-  // Name         |  JS type                                |  GLSL type     |  Notes
-  // scalar       |  number                                 |  float         |
-  // vector       |  { values: number[], length: number }   |  float[], int  |  length must be <= values.length
-  // buffer       |  { buffer: Uint8Array, length: number } |  uint[], int   |  buffer Uint8Array must be 4 byte aligned. GLSL uint[] has 4 Uint8Array values per element. GLSL length is JS length / 4
+  // Name         |  JS type                                                |  GLSL type            |  Notes
+  // scalar       |  number                                                 |  float                |
+  // vector       |  { values: number[], length: number }                   |  float[], int         |  length must be <= values.length
+  // buffer       |  { buffer: Uint8Array, length: number }                 |  uint[], int          |  buffer Uint8Array must be 4 byte aligned. GLSL uint[] has 4 Uint8Array values per element. GLSL length is JS length / 4
+  // texture      |  { pixels: Uint8Array, width: number, height: number }  |  sampler2D, int, int  |  pixels is RGBA UNSIGNED_BYTE format. There can only be one texture uniform per ShaderBox
 
   type UniformScalarValue = number
   interface UniformVectorValue {
@@ -13,6 +14,11 @@
   interface UniformBufferValue {
     buffer: Uint8Array
     length: number
+  }
+  interface UniformTextureValue {
+    pixels: Uint8Array
+    width: number
+    height: number
   }
 
   type UniformScalarLocation = WebGLUniformLocation
@@ -29,7 +35,7 @@
   export let height = 0
   export let vertShaderCode = null
   export let fragShaderCode = null
-  export let uniforms: { [key: string]: UniformScalarValue | UniformVectorValue | UniformBufferValue } = null
+  export let uniforms: { [key: string]: UniformScalarValue | UniformVectorValue | UniformBufferValue | UniformTextureValue } = null
 
   let dpr = window.devicePixelRatio
 
@@ -38,6 +44,7 @@
   let gl: WebGLRenderingContext
   let program: WebGLProgram
   let uniformLocs: { [key: string]: UniformScalarLocation | UniformVectorLocation | UniformBufferLocation } | null = null
+  let texture: WebGLTexture
 
   const createShader = (type: number, code: string) => {
     const shader = gl.createShader(type)
@@ -87,6 +94,19 @@
           buffer: gl.getUniformLocation(program, name),
           length: gl.getUniformLocation(program, name + 'Length')
         }
+      } else if ('pixels' in val) { // UniformTextureValue
+        // TODO: multiple textures
+        const locWidth =  gl.getUniformLocation(program, name + 'Width')
+        const locHeight =  gl.getUniformLocation(program, name + 'Height')
+        if (locWidth !== null) gl.uniform1i(locWidth, val.width)
+        if (locHeight !== null) gl.uniform1i(locHeight, val.height)
+        gl.uniform1i(gl.getUniformLocation(program, name), 0)
+        texture = gl.createTexture()
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, texture)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
       } else {
         throw new Error('ShaderBox: invalid uniforms property.')
       }
@@ -126,6 +146,10 @@
         const locs = uniformLocs[name] as UniformBufferLocation
         if (locs.buffer !== null) gl.uniform1uiv(locs.buffer, new Uint32Array(val.buffer.buffer))
         if (locs.length !== null) gl.uniform1i(locs.length, val.length)
+      } else if ('pixels' in val) { // UniformTextureValue
+        gl.activeTexture(gl.TEXTURE0) // TODO: multiple textures
+        gl.bindTexture(gl.TEXTURE_2D, texture)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, val.width, val.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, val.pixels)
       }
     }
 

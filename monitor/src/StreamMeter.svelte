@@ -28,6 +28,7 @@
   }
 
   $: if (meterBoxUniforms === null && data.streamMeterBins) {
+    // TODO: use texture instead of array to pass uBins to shader
     meterBoxUniforms = {
       uBins: {
         buffer: new Uint8Array(data.streamMeterBins.length),

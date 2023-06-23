@@ -53,7 +53,7 @@
   .graph {
     background-color: rgb(230, 230, 230);
     width: 300px;
-    height: 60px;
+    height: 40px;
     position: relative;
     display: flex;
     align-items: flex-end;
@@ -65,7 +65,7 @@
 
   .value .dash {
     width: 1px;
-    height: 35px;
+    height: 15px;
     background-color: black;
   }
 

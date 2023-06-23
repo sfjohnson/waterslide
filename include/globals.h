@@ -15,6 +15,7 @@
 #define ENDPOINT_TICK_INTERVAL 100000 // in microseconds
 #define ENDPOINT_REOPEN_INTERVAL 20 // in ticks (1 tick = 100 ms)
 #define STATS_STREAM_METER_BINS 512
+#define STATS_BLOCK_TIMING_RING_LEN 512
 
 globals_declare1i(root, mode)
 globals_declare1s(root, privateKey)
@@ -72,6 +73,8 @@ globals_declare1uiv(statsEndpoints, sendCongestion)
 globals_declare1iv(statsCh1Endpoints, lastSbn)
 globals_declare1ui(statsCh1, dupBlockCount)
 globals_declare1ui(statsCh1, oooBlockCount)
+globals_declare1ui(statsCh1, blockTimingRingPos) // NOTE: blockTimingRingPos must only be written to in one place by one thread
+globals_declare1uiv(statsCh1, blockTimingRing)
 globals_declare1uiv(statsCh1Audio, clippingCounts)
 globals_declare1ffv(statsCh1Audio, levelsFast)
 globals_declare1ffv(statsCh1Audio, levelsSlow)

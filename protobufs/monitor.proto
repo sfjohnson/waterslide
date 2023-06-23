@@ -44,9 +44,10 @@ message MonitorProto {
   message MuxChannelStats {
     uint32 dupBlockCount = 1;
     uint32 oooBlockCount = 2;
-    repeated EndpointStats endpoint = 3;
+    bytes blockTiming = 3;
+    repeated EndpointStats endpoint = 4;
     oneof contentStats {
-      AudioStats audioStats = 4;
+      AudioStats audioStats = 5;
     }
   }
 

@@ -134,8 +134,19 @@ static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
 
 // The channel lock in the demux module protects the static variables accessed here
 static void onBlockCh1 (const uint8_t *buf, int sbn) {
+  static struct timespec tsp;
   static int sbnLast = -1;
   bool tryDecode = true;
+
+  if (clock_gettime(CLOCK_MONOTONIC, &tsp) == 0) {
+    // us will be between 0 and 999_999_999 and will roll back to zero every 1000 seconds
+    unsigned int us = 1000000u * (tsp.tv_sec % 1000) + (tsp.tv_nsec / 1000);
+    unsigned int ringPos = globals_get1ui(statsCh1, blockTimingRingPos);
+    globals_set1uiv(statsCh1, blockTimingRing, ringPos, us);
+    if (++ringPos == STATS_BLOCK_TIMING_RING_LEN) ringPos = 0;
+    // NOTE: blockTimingRingPos must only be written to here
+    globals_set1ui(statsCh1, blockTimingRingPos, ringPos);
+  }
 
   if (sbnLast != -1) {
     int sbnDiff;

@@ -11,7 +11,7 @@
     {#each data as endpoint}
       <div class="endpoint-container">
         <h2><span>{endpoint.interfaceName}</span></h2>
-        <TimingGraph />
+        <!-- <TimingGraph /> -->
         <div class="stats-container">
           <div class="entry">
             <div class="label">up:</div>
@@ -54,7 +54,6 @@
     /* background-color: rgb(230, 230, 230); */
     display: flex;
     flex-direction: column;
-    margin-top: 20px;
   }
 
   .sub-container {

@@ -39,6 +39,7 @@ namespace App {
   interface MonitorData {
     dupBlockCount?: number
     oooBlockCount?: number
+    blockTiming?: Uint8Array
     endpoint?: EndpointStats[]
     audioStats?: AudioStats
   }
