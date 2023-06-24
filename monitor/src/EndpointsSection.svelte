@@ -26,14 +26,6 @@
             <div class="value">{`${(endpoint.bytesIn / 1000000).toFixed(2)} MB`}</div>
           </div>
           <div class="entry">
-            <div class="label">duplicated packets:</div>
-            <div class="value">{endpoint.dupPacketCount}</div>
-          </div>
-          <div class="entry">
-            <div class="label">out-of-order packets:</div>
-            <div class="value">{endpoint.oooPacketCount}</div>
-          </div>
-          <div class="entry">
             <div class="label">send congestion:</div>
             <div class="value">{endpoint.sendCongestion}</div>
           </div>

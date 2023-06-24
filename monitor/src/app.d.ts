@@ -29,8 +29,6 @@ namespace App {
     interfaceName?: string
     lastRelativeSbn?: number
     open?: boolean
-    dupPacketCount?: number
-    oooPacketCount?: number
     bytesOut?: number
     bytesIn?: number
     sendCongestion?: number

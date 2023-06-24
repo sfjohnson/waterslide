@@ -48,8 +48,6 @@ globals_define1i(fec, repairSymbolsPerBlock)
 globals_define1i(monitor, wsPort)
 
 globals_define1uiv(statsEndpoints, open, MAX_ENDPOINTS)
-globals_define1uiv(statsEndpoints, dupPacketCount, MAX_ENDPOINTS)
-globals_define1uiv(statsEndpoints, oooPacketCount, MAX_ENDPOINTS)
 globals_define1uiv(statsEndpoints, bytesOut, MAX_ENDPOINTS)
 globals_define1uiv(statsEndpoints, bytesIn, MAX_ENDPOINTS)
 globals_define1uiv(statsEndpoints, sendCongestion, MAX_ENDPOINTS)

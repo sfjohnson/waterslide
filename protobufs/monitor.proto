@@ -34,8 +34,6 @@ message MonitorProto {
     string interfaceName = 1;
     int32 lastRelativeSbn = 2;
     bool open = 3;
-    uint32 dupPacketCount = 4;
-    uint32 oooPacketCount = 5;
     uint64 bytesOut = 6;
     uint64 bytesIn = 7;
     uint32 sendCongestion = 8;

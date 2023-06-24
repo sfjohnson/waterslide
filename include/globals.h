@@ -65,8 +65,6 @@ globals_declare1i(fec, repairSymbolsPerBlock)
 globals_declare1i(monitor, wsPort)
 
 globals_declare1uiv(statsEndpoints, open)
-globals_declare1uiv(statsEndpoints, dupPacketCount)
-globals_declare1uiv(statsEndpoints, oooPacketCount)
 globals_declare1uiv(statsEndpoints, bytesOut)
 globals_declare1uiv(statsEndpoints, bytesIn)
 globals_declare1uiv(statsEndpoints, sendCongestion)

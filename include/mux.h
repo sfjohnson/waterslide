@@ -13,7 +13,6 @@ typedef struct {
 
 typedef struct {
   uint8_t flags;
-  uint16_t seq;
   int chCount;
   mux_channel_t *channels;
 } mux_transfer_t;
