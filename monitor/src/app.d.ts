@@ -21,6 +21,7 @@ namespace App {
     bufferUnderrunCount?: number
     encodeThreadJitterCount?: number
     audioLoopXrunCount?: number
+    receiverSync?: number
     opusStats?: OpusStats
     pcmStats?: PCMStats
   }

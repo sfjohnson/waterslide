@@ -7,7 +7,6 @@
 #include <time.h>
 #include "utils.h"
 #include "opus/opus_multistream.h"
-#include "ck/ck_ring.h"
 #include "globals.h"
 #include "endpoint-secure.h"
 #include "mux.h"
@@ -16,8 +15,6 @@
 #include "xsem.h"
 #include "audio.h"
 #include "sender.h"
-
-#define UNUSED __attribute__((unused))
 
 static ck_ring_t encodeRing;
 static ck_ring_buffer_t *encodeRingBuf;
@@ -114,7 +111,7 @@ static void *startEncodeLoop (UNUSED void *arg) {
   // successfully initialised, tell the main thread
   setEncodeLoopStatus(1);
   while (encodeLoopStatus == 1) {
-    int encodeRingSize = ck_ring_size(&encodeRing);
+    int encodeRingSize = utils_ringSize(&encodeRing);
     int encodeRingSizeFrames = encodeRingSize / networkChannelCount;
     globals_add1uiv(statsCh1Audio, streamMeterBins, STATS_STREAM_METER_BINS * encodeRingSize / encodeRingMaxSize, 1);
 
@@ -128,11 +125,10 @@ static void *startEncodeLoop (UNUSED void *arg) {
       globals_add1ui(statsCh1Audio, encodeThreadJitterCount, 1);
     }
 
+    globals_set1ui(statsCh1Audio, codecRingActive, 1);
+
     for (int i = 0; i < networkChannelCount * audioFrameSize; i++) {
-      intptr_t outSample = 0;
-      ck_ring_dequeue_spsc(&encodeRing, encodeRingBuf, &outSample);
-      // https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#how-do-we-type-pun-correctly
-      memcpy(&sampleBufDouble[i], &outSample, 8);
+      sampleBufDouble[i] = utils_ringDequeueSample(&encodeRing, encodeRingBuf);
       sampleBufFloat[i] = sampleBufDouble[i];
     }
 
@@ -243,7 +239,7 @@ int sender_init (void) {
   }
   targetEncodeRingSize *= networkChannelCount;
 
-  // encodeRingMaxSize is the maximum number of float values that can be stored in encodeRing, with
+  // encodeRingMaxSize is the maximum number of double values that can be stored in encodeRing, with
   // networkChannelCount values per frame.
   // In theory the encode thread should loop often enough that the encodeRing never gets much larger than
   // targetEncodeRingSize, but we multiply by 4 to allow plenty of room in encodeRing
@@ -251,24 +247,22 @@ int sender_init (void) {
   encodeRingMaxSize = utils_roundUpPowerOfTwo(4 * targetEncodeRingSize);
   globals_set1i(statsCh1Audio, streamBufferSize, encodeRingMaxSize / networkChannelCount);
 
-  encodeRingBuf = (ck_ring_buffer_t*)malloc(sizeof(ck_ring_buffer_t) * encodeRingMaxSize);
-  if (encodeRingBuf == NULL) return -30;
-  memset(encodeRingBuf, 0, sizeof(ck_ring_buffer_t) * encodeRingMaxSize);
-  ck_ring_init(&encodeRing, encodeRingMaxSize);
-
-  err = audio_start(&encodeRing, encodeRingBuf, encodeRingMaxSize);
+  err = utils_ringInit(&encodeRing, &encodeRingBuf, encodeRingMaxSize);
   if (err < 0) return err - 30;
 
+  err = audio_start(&encodeRing, encodeRingBuf, encodeRingMaxSize);
+  if (err < 0) return err - 31;
+
   pthread_t encodeLoopThread;
-  if (xsem_init(&encodeLoopInitSem, 0) < 0) return -34;
-  if (pthread_create(&encodeLoopThread, NULL, startEncodeLoop, NULL) != 0) return -35;
+  if (xsem_init(&encodeLoopInitSem, 0) < 0) return -35;
+  if (pthread_create(&encodeLoopThread, NULL, startEncodeLoop, NULL) != 0) return -36;
 
   // Wait for encodeLoop to initialise
   xsem_wait(&encodeLoopInitSem);
   if (encodeLoopStatus < 0) {
-    if (pthread_join(encodeLoopThread, NULL) != 0) return -36;
-    if (xsem_destroy(&encodeLoopInitSem) != 0) return -37;
-    return encodeLoopStatus - 37;
+    if (pthread_join(encodeLoopThread, NULL) != 0) return -37;
+    if (xsem_destroy(&encodeLoopInitSem) != 0) return -38;
+    return encodeLoopStatus - 38;
   }
 
   return 0;

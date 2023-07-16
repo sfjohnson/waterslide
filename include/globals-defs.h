@@ -59,6 +59,9 @@ extern atomic_int globals_1iv_##GROUP##_##NAME[];
 #define globals_declare1uiv(GROUP, NAME) \
 extern atomic_uint globals_1uiv_##GROUP##_##NAME[];
 
+// NOTE: If we don't do an explicit store for set1ff and set1ffv (and just memcpy directly into the atomic),
+// g++ (but not gcc or clang) complains about atomic_uint_fast64_t having no trivial copy-assignment.
+
 // atomic_uint_fast64_t punned as double
 // https://blog.regehr.org/archives/959
 #define globals_declare1ff(GROUP, NAME) \
@@ -67,7 +70,9 @@ static inline void _globals_get1ff_##GROUP##_##NAME (double *x) { \
   memcpy(x, &globals_1ff_##GROUP##_##NAME, 8); \
 } \
 static inline void _globals_set1ff_##GROUP##_##NAME (double x) { \
-  memcpy(&globals_1ff_##GROUP##_##NAME, &x, 8); \
+  uint_fast64_t xInt = 0; \
+  memcpy(&xInt, &x, 8); \
+  globals_1ff_##GROUP##_##NAME = xInt; \
 }
 
 #define globals_declare1ffv(GROUP, NAME) \
@@ -76,7 +81,9 @@ static inline void _globals_get1ffv_##GROUP##_##NAME (size_t index, double *x) {
   memcpy(x, &globals_1ffv_##GROUP##_##NAME[index], 8); \
 } \
 static inline void _globals_set1ffv_##GROUP##_##NAME (size_t index, double x) { \
-  memcpy(&globals_1ffv_##GROUP##_##NAME[index], &x, 8); \
+  uint_fast64_t xInt = 0; \
+  memcpy(&xInt, &x, 8); \
+  globals_1ffv_##GROUP##_##NAME[index] = xInt; \
 }
 
 #define globals_declare1s(GROUP, NAME) \

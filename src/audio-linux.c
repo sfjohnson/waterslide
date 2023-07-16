@@ -14,8 +14,6 @@
 #include "syncer.h"
 #include "audio.h"
 
-#define UNUSED __attribute__((unused))
-
 static ck_ring_t *_ring;
 static ck_ring_buffer_t *_ringBuf;
 static unsigned int _fullRingSize;
@@ -28,11 +26,13 @@ static atomic_int audioLoopStatus = 0;
 // This is on the RT thread for receiver
 static void dmaBufWrite (uint8_t *dmaBuf, unsigned int frameCount) {
   static bool ringUnderrun = false;
-  unsigned int ringCurrentSize = ck_ring_size(_ring);
+  unsigned int ringCurrentSize = utils_ringSize(_ring);
 
   memset(dmaBuf, 0, bytesPerSample * deviceChannelCount * frameCount);
 
-  globals_add1i(audio, receiverSync, -frameCount);
+  if (globals_get1ui(statsCh1Audio, codecRingActive)) {
+    globals_add1i(statsCh1Audio, receiverSync, -frameCount);
+  }
 
   if (ringUnderrun) {
     // Let the ring fill up to about half-way before pulling from it again, while outputting silence.
@@ -55,15 +55,11 @@ static void dmaBufWrite (uint8_t *dmaBuf, unsigned int frameCount) {
       // If networkChannelCount > networkChannelCount, dequeue the sample then discard it.
       // If networkChannelCount < deviceChannelCount, don't write to the remaining channels in outBuf,
       // they are already set to zero above.
-      // NOTE: audio-android and audio-macos have different behaviour when deviceChannelCount < networkChannelCount:
-      // - audio-android: output the first deviceChannelCount channels and discard the rest
+      // NOTE: audio-linux and audio-macos have different behaviour when deviceChannelCount < networkChannelCount:
+      // - audio-linux: output the first deviceChannelCount channels and discard the rest
       // - audio-macos: don't proceed, return an error from audio_init
-      intptr_t outSample = 0;
-      double outSampleDouble;
-      ck_ring_dequeue_spsc(_ring, _ringBuf, &outSample);
+      double outSampleDouble = utils_ringDequeueSample(_ring, _ringBuf);
       if (j >= deviceChannelCount) continue;
-      // https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#how-do-we-type-pun-correctly
-      memcpy(&outSampleDouble, &outSample, 8);
       if (outSampleDouble < -1.0) outSampleDouble = -1.0;
       else if (outSampleDouble > 1.0) outSampleDouble = 1.0;
       // NOTE: Only bytesPerSample = 4 is implemented
@@ -103,9 +99,7 @@ static void dmaBufRead (const uint8_t *dmaBuf, unsigned int frameCount) {
             inSampleDouble = sampleInt > 0 ? sampleInt/32767.0 : sampleInt/32768.0;
           }
 
-          intptr_t inSample = 0;
-          memcpy(&inSample, &inSampleDouble, 8);
-          ck_ring_enqueue_spsc(_ring, _ringBuf, (void*)inSample);
+          utils_ringEnqueueSample(_ring, _ringBuf, inSampleDouble);
           utils_setAudioStats(inSampleDouble, j);
         }
       }
@@ -230,7 +224,7 @@ static void *startAudioLoop (UNUSED void *arg) {
   bool lastBufHalf = false;
 
   // Wait a bit, otherwise pcm_mmap_get_hw_ptr will error out due to the timestamp being 0
-  usleep(50000);
+  utils_usleep(50000);
 
   // successfully initialised, tell the main thread
   setAudioLoopStatus(1);

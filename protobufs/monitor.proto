@@ -24,9 +24,10 @@ message MonitorProto {
     uint32 bufferUnderrunCount = 5;
     uint32 encodeThreadJitterCount = 6;
     uint32 audioLoopXrunCount = 7;
+    float receiverSync = 8;
     oneof encoding {
-      OpusStats opusStats = 8;
-      PCMStats pcmStats = 9;
+      OpusStats opusStats = 9;
+      PCMStats pcmStats = 10;
     }
   }
 

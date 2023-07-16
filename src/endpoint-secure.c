@@ -12,7 +12,6 @@
 #include "wsocket.h"
 #include "endpoint-secure.h"
 
-#define UNUSED __attribute__((unused))
 #define WG_READ_BUF_LEN 1500
 
 static int endpointCount = 0;
@@ -77,7 +76,7 @@ static void *tickLoop (UNUSED void *arg) {
     result = wireguard_tick(tunnel, tickBuf, sizeof(tickBuf));
     if (result.op == WRITE_TO_NETWORK) sendBufToAll(tickBuf, result.size);
 
-    usleep(ENDPOINT_TICK_INTERVAL);
+    utils_usleep(ENDPOINT_TICK_INTERVAL);
   }
 
   return NULL;
@@ -133,7 +132,7 @@ static void *startDiscovery (void *arg) {
   // DEBUG: inet_ntop fails on Android
   char addrString[15] = { 0 };
   inet_ntop(AF_INET, &sockets[epIndex].peerAddr, addrString, sizeof(addrString));
-  printf("(epIndex %ld) got peer addr %s:%d\n", epIndex, addrString, ntohs(sockets[epIndex].peerPort));
+  printf("(epIndex %d) got peer addr %s:%d\n", epIndex, addrString, ntohs(sockets[epIndex].peerPort));
 
   return NULL;
 }

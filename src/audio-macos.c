@@ -6,8 +6,6 @@
 #include "syncer.h"
 #include "audio.h"
 
-#define UNUSED __attribute__((unused))
-
 static PaStream *stream = NULL;
 static ck_ring_t *_ring;
 static ck_ring_buffer_t *_ringBuf;
@@ -27,7 +25,7 @@ static double deviceLatency = 0.0;
 static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, UNUSED const PaStreamCallbackTimeInfo* timeInfo, UNUSED PaStreamCallbackFlags statusFlags, UNUSED void *userData) {
   static bool underrun = true;
   float *outBufFloat = (float *)outputBuffer;
-  int ringCurrentSize = ck_ring_size(_ring);
+  int ringCurrentSize = utils_ringSize(_ring);
   // This condition is ensured in audio_init: outBufFloatCount >= ringFloatCount
   int outBufFrameCount = (int)framesPerBuffer;
   int outBufFloatCount = deviceChannelCount * outBufFrameCount;
@@ -35,24 +33,15 @@ static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, uns
 
   memset(outBufFloat, 0, 4 * outBufFloatCount);
 
-  globals_add1i(audio, receiverSync, -outBufFrameCount);
-
+  if (globals_get1ui(statsCh1Audio, codecRingActive)) {
+    globals_add1i(statsCh1Audio, receiverSync, -outBufFrameCount);
+  }
+  
   // DEBUG: test
-  // static double receiverSyncDiff[5] = { 0.0 };
-  // static float receiverSyncFiltLpf1 = 0.0f;
-  // static double receiverSyncFiltLpf2 = 0.0;
+  static double receiverSyncFiltLpf = 0.0f;
 
-  // receiverSyncFiltLpf1 += 0.001f * ((float)globals_get1i(audio, receiverSync) - receiverSyncFiltLpf1);
-
-  // for (int i = 4; i >= 1; i--) {
-  //   receiverSyncDiff[i] = receiverSyncDiff[i - 1];
-  // }
-  // receiverSyncDiff[0] = (double)globals_get1i(audio, receiverSync);
-  // double receiverSyncD = (double)globals_get1i(audio, receiverSync);
-  // receiverSyncFiltLpf2 += 0.0005 * (differentiator(receiverSyncDiff) - receiverSyncFiltLpf2);
-  // globals_set1ff(audio, receiverSyncFilt, receiverSyncD);
-
-  // globals_set1uiv(statsEndpoints, bytesOut, 0, (unsigned int)(-10000000.0f*receiverSyncFiltLpf2));
+  receiverSyncFiltLpf += 0.001f * ((double)globals_get1i(statsCh1Audio, receiverSync) - receiverSyncFiltLpf);
+  globals_set1ff(statsCh1Audio, receiverSyncFilt, receiverSyncFiltLpf);
 
   if (underrun) {
     // Let the ring fill up to about half-way before pulling from it again, while outputting silence.
@@ -74,11 +63,7 @@ static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, uns
     for (int j = 0; j < networkChannelCount; j++) {
       // If networkChannelCount < deviceChannelCount, don't write to the remaining channels in outBufFloat,
       // they are already set to zero above.
-      intptr_t outSample = 0;
-      double outSampleDouble;
-      ck_ring_dequeue_spsc(_ring, _ringBuf, &outSample);
-      // https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#how-do-we-type-pun-correctly
-      memcpy(&outSampleDouble, &outSample, 8);
+      double outSampleDouble = utils_ringDequeueSample(_ring, _ringBuf);
       // Setting stats here instead of in syncer_enqueueBuf allows us to see silence from underruns on the audio level monitor.
       outBufFloat[deviceChannelCount*i + j] = outSampleDouble;
       utils_setAudioStats(outSampleDouble, j);
@@ -100,10 +85,8 @@ static int recordCallback (const void *inputBuffer, UNUSED void *outputBuffer, u
     case AUDIO_ENCODING_PCM:
       for (unsigned long i = 0; i < framesPerBuffer; i++) {
         for (int j = 0; j < networkChannelCount; j++) {
-          intptr_t inSample = 0;
           double inSampleDouble = inBufFloat[deviceChannelCount*i + j];
-          memcpy(&inSample, &inSampleDouble, 8);
-          ck_ring_enqueue_spsc(_ring, _ringBuf, (void*)inSample);
+          utils_ringEnqueueSample(_ring, _ringBuf, inSampleDouble);
           utils_setAudioStats(inSampleDouble, j);
         }
       }
@@ -114,20 +97,25 @@ static int recordCallback (const void *inputBuffer, UNUSED void *outputBuffer, u
 }
 
 int audio_init (bool receiver) {
+  // macOS is 64-bit only
+  #ifndef W_64_BIT_POINTERS
+  return -1;
+  #endif
+
   _receiver = receiver;
   networkChannelCount = globals_get1i(audio, networkChannelCount);
   audioEncoding = globals_get1ui(audio, encoding);
 
   utils_setAudioLevelFilters();
 
-  if (Pa_Initialize() != paNoError) return -1;
+  if (Pa_Initialize() != paNoError) return -2;
 
   int deviceCount = Pa_GetDeviceCount();
-  if (deviceCount < 0) return -2;
+  if (deviceCount < 0) return -3;
 
   if (deviceCount == 0) {
     printf("No audio devices.\n");
-    return -3;
+    return -4;
   }
 
   const PaDeviceInfo *foundDeviceInfo;
@@ -152,7 +140,7 @@ int audio_init (bool receiver) {
 
   if (foundDeviceIndex == -1) {
     printf("Audio device %s not available for %s.\n", audioDeviceName, receiver ? "output" : "input");
-    return -4;
+    return -5;
   }
 
   deviceChannelCount = receiver ? foundDeviceInfo->maxOutputChannels : foundDeviceInfo->maxInputChannels;
@@ -163,7 +151,7 @@ int audio_init (bool receiver) {
   printf("%s channels: %d\n", receiver ? "Receiver" : "Sender", networkChannelCount);
   if (deviceChannelCount < networkChannelCount) {
     printf("Device does not have enough output channels.\n");
-    return -5;
+    return -6;
   }
 
   int framesPerCallbackBuffer = 0;
@@ -173,7 +161,7 @@ int audio_init (bool receiver) {
     } else if (audioEncoding == AUDIO_ENCODING_PCM) {
       framesPerCallbackBuffer = globals_get1i(pcm, frameSize);
     } else {
-      return -6;
+      return -7;
     }
   }
 
@@ -194,7 +182,7 @@ int audio_init (bool receiver) {
     receiver ? playCallback : recordCallback,
     NULL
   );
-  if (pErr != paNoError) return -7;
+  if (pErr != paNoError) return -8;
 
   const PaStreamInfo *streamInfo = Pa_GetStreamInfo(stream);
   deviceLatency = receiver ? streamInfo->outputLatency : streamInfo->inputLatency; // seconds
@@ -202,7 +190,7 @@ int audio_init (bool receiver) {
 
   if (audioEncoding == AUDIO_ENCODING_PCM && !receiver && requestedDeviceSampleRate != actualDeviceSampleRate) {
     printf("We requested %d Hz but the device requires %d Hz. This is only an issue when using PCM encoding.\n", requestedDeviceSampleRate, actualDeviceSampleRate);
-    return -8;
+    return -9;
   }
 
   // Set the deviceSampleRate global in case PortAudio gave a different sample rate to the one requested.

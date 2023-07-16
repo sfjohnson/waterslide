@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <stdatomic.h>
+#include <stdint.h>
 #include "config.h"
 #include "globals.h"
 #include "sender.h"
@@ -10,19 +12,25 @@
 #include "monitor.h"
 #include "audio.h"
 
-#define UNUSED __attribute__((unused))
-
 static bool archChecks (void) {
-  return sizeof(double) == 8 &&
-    sizeof(intptr_t) == 8 &&
-    ((-1) >> 1) < 0;
+  // We are going to use macros to test for pointer size, so make sure they are consistent with our runtime test.
+  #if defined(W_32_BIT_POINTERS)
+    if (sizeof(intptr_t) != 4) return false;
+  #elif defined(W_64_BIT_POINTERS)
+    if (sizeof(intptr_t) != 8) return false;
+  #else
+    return false;
+  #endif
+
+  bool lockFree = ATOMIC_LLONG_LOCK_FREE == 2 && ATOMIC_INT_LOCK_FREE == 2 && ATOMIC_BOOL_LOCK_FREE == 2;
+  return lockFree && sizeof(double) == 8 && ((-1) >> 1) < 0;
 }
 
 int main (int argc, char *argv[]) {
   // Disable full buffering when executed outside of a terminal (e.g. NodeJS spawn)
   setbuf(stdout, NULL);
 
-  printf("Waterslide, build 65\n");
+  printf("Waterslide, build 66\n");
 
   if (argc < 2) {
     printf("First argument must be base64 encoded init config.\n");
@@ -30,7 +38,7 @@ int main (int argc, char *argv[]) {
   }
 
   if (!archChecks()) {
-    printf("Architecture and compiler checks failed: expected 64-bit double, 64-bit pointers, and arithmetic right shift for negative numbers.\n");
+    printf("Architecture and compiler checks failed. The following were expected: lock-free 64-bit atomic integers, 64-bit double-precision floats, 32 or 64-bit pointers, and arithmetic right shift for negative numbers.\n");
     return EXIT_FAILURE;
   }
 

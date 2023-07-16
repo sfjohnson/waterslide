@@ -2,7 +2,11 @@
 #include <stdint.h>
 #include <string.h>
 #include "globals.h"
+// TODO: fix up the generated protobufs code so we can turn pedantic back on
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 #include "protobufs/init-config.pb.h"
+#pragma GCC diagnostic pop
 #include "config.h"
 #if defined(__linux__) || defined(__ANDROID__)
 #include "tinyalsa/mixer.h"

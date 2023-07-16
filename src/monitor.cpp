@@ -8,10 +8,16 @@
 #include <string.h>
 #include "uWebSockets/libuwebsockets.h"
 #include "globals.h"
+// TODO: fix up the generated protobufs code so we can turn pedantic back on
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 #include "protobufs/monitor.pb.h"
+#pragma GCC diagnostic pop
+#include "config.h"
 #include "monitor.h"
 
-#define UNUSED __attribute__((unused))
+// DEBUG: test
+// #include "syncer.h"
 
 static int audioChannelCount, endpointCount;
 // DEBUG: two threads are accessing the members of wsClient (wsThread and statsThread). Make sure these are thread-safe
@@ -124,10 +130,14 @@ static void *statsLoop (UNUSED void *arg) {
 
     // DEBUG: test
     // if (debugCounter < 24000) { // 20 mins
-    //   // int64_t receiverSync = globals_get1i(audio, receiverSync);
     //   double receiverSync;
-    //   globals_get1ff(audio, receiverSyncFilt, &receiverSync);
+    //   globals_get1ff(statsCh1Audio, receiverSyncFilt, &receiverSync);
     //   fwrite(&receiverSync, 8, 1, syncDataFile);
+
+    //   // if (debugCounter == 12000) {
+    //   //   printf("syncer_changeRate returned %d\n", syncer_changeRate(47999.9));
+    //   // }
+
     // } else if (debugCounter == 24000) {
     //   fclose(syncDataFile);
     //   printf("done!\n");
@@ -164,6 +174,9 @@ static void *statsLoop (UNUSED void *arg) {
     protoCh1->mutable_audiostats()->set_bufferunderruncount(globals_get1ui(statsCh1Audio, bufferUnderrunCount));
     protoCh1->mutable_audiostats()->set_encodethreadjittercount(globals_get1ui(statsCh1Audio, encodeThreadJitterCount));
     protoCh1->mutable_audiostats()->set_audioloopxruncount(globals_get1ui(statsCh1Audio, audioLoopXrunCount));
+    double receiverSyncFilt;
+    globals_get1ff(statsCh1Audio, receiverSyncFilt, &receiverSyncFilt);
+    protoCh1->mutable_audiostats()->set_receiversync(receiverSyncFilt);
 
     mapStreamMeterBins(streamMeterBinsRaw, streamMeterBinsMapped);
     protoCh1->mutable_audiostats()->set_streammeterbins(streamMeterBinsMapped, STATS_STREAM_METER_BINS);

@@ -10,7 +10,7 @@ jobs:
     runs-on: macos-11
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           persist-credentials: false
 
@@ -23,16 +23,28 @@ jobs:
       - name: Make
         run: make -f macos.mk
 
-  build-android:
-    runs-on: ubuntu-20.04
+  build-android-and-rpi:
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           persist-credentials: false
+
+      - name: Get RPi toolchain
+        run: |
+          wget https://github.com/sfjohnson/rpi-toolchain/releases/download/v0.0.6/arm-rpi-linux-gnueabihf.tar.xz
+          tar xf arm-rpi-linux-gnueabihf.tar.xz -C ~
 
       - name: Setup dependencies
         run: ./pull-deps.sh
 
-      - name: Make
-        run: make -f android30.mk
+      - name: Make RPi
+        run: make -f rpi.mk
+        env:
+          TOOLCHAIN: ${{ env.HOME }}/arm-rpi-linux-gnueabihf
+
+      - name: Make Android
+        run: |
+          make -f rpi.mk clean
+          make -f android30.mk

@@ -4,7 +4,6 @@
 #include <stdatomic.h>
 #include "receiver.h"
 #include "opus/opus_multistream.h"
-#include "ck/ck_ring.h"
 #include "globals.h"
 #include "demux.h"
 #include "endpoint-secure.h"
@@ -26,7 +25,7 @@ static float *sampleBufFloat;
 static uint8_t *audioEncodedBuf;
 static int audioEncodedBufPos = 0;
 static bool slipEsc = false;
-static double avgAudioFramesPerBlock = 0.0;
+// static double avgAudioFramesPerBlock = 0.0;
 
 // returns: number of audio frames added to decodeRing (after resampling), or negative error code
 static int decodePacket (const uint8_t *buf, int len) {
@@ -37,7 +36,7 @@ static int decodePacket (const uint8_t *buf, int len) {
   buf += 2;
   len -= 2;
 
-  int ringCurrentSize = ck_ring_size(&decodeRing);
+  int ringCurrentSize = utils_ringSize(&decodeRing);
   globals_add1uiv(statsCh1Audio, streamMeterBins, STATS_STREAM_METER_BINS * ringCurrentSize / decodeRingMaxSize, 1);
 
   const uint8_t *pcmSamples;
@@ -66,10 +65,12 @@ static int decodePacket (const uint8_t *buf, int len) {
     }
   }
 
+  globals_set1ui(statsCh1Audio, codecRingActive, 1);
+
   if (audioEncoding == AUDIO_ENCODING_OPUS) {
     result = syncer_enqueueBufF32(sampleBufFloat, audioFrameSize, networkChannelCount, false, seq);
   } else { // audioEncoding == AUDIO_ENCODING_PCM
-    result = syncer_enqueueBufS24(pcmSamples, audioFrameSize, networkChannelCount, false, seq);
+    result = syncer_enqueueBufS24Packed(pcmSamples, audioFrameSize, networkChannelCount, false, seq);
   }
   if (result == -3) {
     overrun = true;
@@ -79,15 +80,15 @@ static int decodePacket (const uint8_t *buf, int len) {
   return result;
 }
 
-static void enqueueSilence (int frameCount) {
-  int totalSamples = networkChannelCount * frameCount;
-  // Don't ever let the ring fill completely, that way the channels stay in order
-  if ((int)ck_ring_size(&decodeRing) + totalSamples > decodeRingMaxSize) return;
+// static void enqueueSilence (int frameCount) {
+//   int totalSamples = networkChannelCount * frameCount;
+//   // Don't ever let the ring fill completely, that way the channels stay in order
+//   if ((int)utils_ringSize(&decodeRing) + totalSamples > decodeRingMaxSize) return;
 
-  for (int i = 0; i < totalSamples; i++) {
-    ck_ring_enqueue_spsc(&decodeRing, decodeRingBuf, (void*)0);
-  }
-}
+//   for (int i = 0; i < totalSamples; i++) {
+//     utils_ringEnqueueSample(&decodeRing, decodeRingBuf, 0);
+//   }
+// }
 
 // returns: number of audio frames added to decodeRing (after resampling), or negative error code
 static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
@@ -171,7 +172,7 @@ static void onBlockCh1 (const uint8_t *buf, int sbn) {
       globals_add1ui(statsCh1, oooBlockCount, blockDroppedCount);
       // Fill in decodeRing with zeros based on average block size plus
       // one assumed lost packet due to resetting of SLIP state
-      enqueueSilence((int)(blockDroppedCount * avgAudioFramesPerBlock) + audioFrameSize);
+      // enqueueSilence((int)(blockDroppedCount * avgAudioFramesPerBlock) + audioFrameSize);
       audioEncodedBufPos = 0;
       slipEsc = false;
       tryDecode = false;
@@ -185,7 +186,7 @@ static void onBlockCh1 (const uint8_t *buf, int sbn) {
 
   int result = slipDecodeBlock(buf, channel1.symbolsPerBlock * channel1.symbolLen);
   if (result >= 0) {
-    avgAudioFramesPerBlock += 0.003 * ((double)result - avgAudioFramesPerBlock);
+    // avgAudioFramesPerBlock += 0.003 * ((double)result - avgAudioFramesPerBlock);
     // DEBUG: log
     // globals_set1uiv(statsEndpoints, bytesOut, 0, (unsigned int)(1000000.0f * avgAudioFramesPerBlock));
   } else if (result == -4) {
@@ -219,18 +220,12 @@ int receiver_init (void) {
   int decodeRingLength = globals_get1i(audio, decodeRingLength);
   decodeRingMaxSize = networkChannelCount * decodeRingLength;
   globals_set1i(statsCh1Audio, streamBufferSize, decodeRingLength);
-  // ck requires the size to be a power of two but we will pretend decodeRing contains
-  // decodeRingMaxSize number of double values, and ignore the rest.
-  int decodeRingAllocSize = utils_roundUpPowerOfTwo(decodeRingMaxSize);
 
   sampleBufFloat = (float *)malloc(4 * networkChannelCount * audioFrameSize);
   audioEncodedBuf = (uint8_t *)malloc(maxEncodedPacketSize);
-  decodeRingBuf = (ck_ring_buffer_t*)malloc(sizeof(ck_ring_buffer_t) * decodeRingAllocSize);
-  if (sampleBufFloat == NULL || audioEncodedBuf == NULL || decodeRingBuf == NULL) {
-    return -2;
-  }
-  memset(decodeRingBuf, 0, sizeof(ck_ring_buffer_t) * decodeRingAllocSize);
+  if (sampleBufFloat == NULL || audioEncodedBuf == NULL) return -2;
 
+  if (utils_ringInit(&decodeRing, &decodeRingBuf, decodeRingMaxSize) < 0) return -2;
   if (demux_init() < 0) return -3;
 
   channel1.chId = 1;
@@ -247,7 +242,6 @@ int receiver_init (void) {
     if (err < 0) return -4;
   }
 
-  ck_ring_init(&decodeRing, decodeRingAllocSize);
   // enqueueSilence(decodeRingLength / 2);
 
   char privateKey[SEC_KEY_LENGTH + 1] = { 0 };
@@ -265,11 +259,11 @@ int receiver_init (void) {
 
   // Start audio before endpointsec so that we don't call audio_enqueueBuf before audio module has called syncer_init
   err = audio_start(&decodeRing, decodeRingBuf, decodeRingMaxSize);
-  if (err < 0) return err - 13;
+  if (err < 0) return err - 14;
 
   // NOTE: endpointsec_init will block until network discovery is completed
   err = endpointsec_init(demux_readPacket);
-  if (err < 0) return err - 17;
+  if (err < 0) return err - 18;
 
   return 0;
 }

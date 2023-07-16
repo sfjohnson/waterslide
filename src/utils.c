@@ -14,13 +14,96 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include "boringtun/wireguard_ffi.h"
 #include "globals.h"
 #include "utils.h"
 
-#define UNUSED __attribute__((unused))
-
 static double levelFastAttack = 0.0, levelFastRelease = 0.0, levelSlowAttack = 0.0, levelSlowRelease = 0.0;
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+int utils_ringInit (ck_ring_t *ring, ck_ring_buffer_t **ringBuf, int size) {
+  #ifdef W_32_BIT_POINTERS
+  // on 32-bit arch we will store 1 double using 2 ring elements (2 x intptr_t)
+  size *= 2;
+  #endif
+
+  // ck requires the size to be a power of two but we will pretend ring contains
+  // size number of double values, and ignore the rest.
+  int ringAllocSize = utils_roundUpPowerOfTwo(size);
+  *ringBuf = (ck_ring_buffer_t*)malloc(sizeof(ck_ring_buffer_t) * ringAllocSize);
+  if (*ringBuf == NULL) return -1;
+  memset(*ringBuf, 0, sizeof(ck_ring_buffer_t) * ringAllocSize);
+
+  ck_ring_init(ring, ringAllocSize);
+  return 0;
+}
+
+// DEBUG: making these functions inline would be nice because they are used to process samples,
+// but I need to solve "static function is used in an inline function with external linkage"
+
+unsigned int utils_ringSize (const ck_ring_t *ring) {
+  #ifdef W_32_BIT_POINTERS
+  return ck_ring_size(ring) / 2;
+  #else
+  return ck_ring_size(ring);
+  #endif
+}
+
+double utils_ringDequeueSample (ck_ring_t *ring, ck_ring_buffer_t *ringBuf) {
+  double sampleDouble;
+
+  #ifdef W_32_BIT_POINTERS
+  intptr_t sample[2] __attribute__ ((aligned (8)));
+  ck_ring_dequeue_spsc(ring, ringBuf, (void*)&sample[0]);
+  ck_ring_dequeue_spsc(ring, ringBuf, (void*)&sample[1]);
+  // https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#how-do-we-type-pun-correctly
+  memcpy(&sampleDouble, sample, 8);
+  #else
+  intptr_t sample = 0;
+  ck_ring_dequeue_spsc(ring, ringBuf, (void*)&sample);
+  memcpy(&sampleDouble, &sample, 8);
+  #endif
+
+  return sampleDouble;
+}
+
+void utils_ringEnqueueSample (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, double x) {
+  #ifdef W_32_BIT_POINTERS
+  intptr_t sample[2] __attribute__ ((aligned (8)));
+  memcpy(sample, &x, 8);
+  ck_ring_enqueue_spsc(ring, ringBuf, (void*)sample[0]);
+  ck_ring_enqueue_spsc(ring, ringBuf, (void*)sample[1]);
+  #else
+  intptr_t sample = 0;
+  memcpy(&sample, &x, 8);
+  ck_ring_enqueue_spsc(ring, ringBuf, (void*)sample);
+  #endif
+}
+
+void utils_ringDeinit (UNUSED ck_ring_t *ring, ck_ring_buffer_t *ringBuf) {
+  free(ringBuf);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void utils_usleep (unsigned int us) {
+  #if defined(__linux__) || defined(__ANDROID__)
+  struct timespec tsp;
+  tsp.tv_nsec = 1000 * us;
+  tsp.tv_sec = 0;
+  clock_nanosleep(CLOCK_MONOTONIC, 0, &tsp, NULL);
+  #else
+  usleep(us);
+  #endif
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 #if defined(__linux__) || defined(__ANDROID__)
 int utils_setCallerThreadRealtime (int priority, int core) {
@@ -199,41 +282,25 @@ void utils_setAudioStats (double sample, int channel) {
   globals_set1ffv(statsCh1Audio, levelsSlow, channel, levelSlow);
 }
 
-// void utils_writeSampleF32LE (void *dest, double src, bool setStats, int channel) {
-//   if (src < -1.0) src = -1.0;
-//   else if (src > 1.0) src = 1.0;
-//   // setAudioStats will detect clipping and tell the user
-//   if (setStats) setAudioStats(src, channel);
-//   float sampleFloat = src;
-//   memcpy(dest, &sampleFloat, 4);
-// }
+inline double utils_s16ToDouble (const int16_t *inBuf, int index) {
+  double sample = inBuf[index];
+  // http://blog.bjornroche.com/2009/12/int-float-int-its-jungle-out-there.html
+  return sample > 0.0 ? sample/32767.0 : sample/32768.0;
+}
 
-// void utils_writeSampleS32LE (void *dest, double src, bool setStats, int channel) {
-//   // TODO: verify this conversion is correct by measuring distortion
-//   if (src < -1.0) src = -1.0;
-//   else if (src > 1.0) src = 1.0;
-//   if (setStats) setAudioStats(src, channel);
-//   // http://blog.bjornroche.com/2009/12/int-float-int-its-jungle-out-there.html
-//   int32_t sampleInt = src > 0.0 ? 2147483647.0*src : 2147483648.0*src;
-//   memcpy(dest, &sampleInt, 4);
-// }
+// 24-bit index, i.e. 1 unit in index equals 3 bytes in inBuf
+inline double utils_s24ToDouble (const uint8_t *inBuf, int index) {
+  int32_t sampleInt = 0;
+  // Leave the least significant byte of sampleInt empty and then shift back into it to sign extend.
+  memcpy((uint8_t *)&sampleInt + 1, inBuf + 3*index, 3);
+  sampleInt >>= 8;
+  return sampleInt > 0 ? sampleInt/8388607.0 : sampleInt/8388608.0;
+}
 
-// inline double utils_readSampleS32LE (const void *src, bool setStats, int channel) {
-//   int32_t sampleInt;
-//   memcpy(&sampleInt, src, 4);
-//   double sampleDouble = sampleInt > 0 ? sampleInt/2147483647.0 : sampleInt/2147483648.0;
-//   if (setStats) setAudioStats(sampleDouble, channel);
-//   return sampleDouble;
-// }
-
-// inline double utils_readSampleS16LE (const void *src, bool setStats, int channel) {
-//   int16_t sampleInt;
-//   memcpy(&sampleInt, src, 2);
-//   double sampleDouble = sampleInt > 0 ? sampleInt/32767.0 : sampleInt/32768.0;
-//   if (setStats) setAudioStats(sampleDouble, channel);
-//   // Dithering is not necessary as the significand of a float is > 16 bits
-//   return sampleDouble;
-// }
+inline double utils_s32ToDouble (const int32_t *inBuf, int index) {
+  double sample = inBuf[index];
+  return sample > 0.0 ? sample/2147483647.0 : sample/2147483648.0;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////

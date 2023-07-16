@@ -41,6 +41,17 @@ inline int xsem_post (xsem_t *sem) {
 #endif
 }
 
+inline int xsem_getvalue (xsem_t *sem) {
+#ifdef __APPLE__
+  dispatch_semaphore_signal(*sem);
+  return 0;
+#else
+  int val = 0;
+  sem_getvalue(sem, &val);
+  return val;
+#endif
+}
+
 inline int xsem_destroy (xsem_t *sem) {
 #ifdef __APPLE__
   dispatch_release(*sem);

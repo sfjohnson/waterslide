@@ -3,9 +3,30 @@
 
 #include "globals-defs.h"
 
+#define UNUSED __attribute__((unused))
+
+#if INTPTR_MAX == INT32_MAX
+  #define W_32_BIT_POINTERS
+#elif INTPTR_MAX == INT64_MAX
+  #define W_64_BIT_POINTERS
+#else
+  #error "Could not determine if pointers are 32-bit or 64-bit!"
+#endif
+
 #define AUDIO_ENCODING_OPUS 0
 #define AUDIO_ENCODING_PCM 1
 #define AUDIO_OPUS_SAMPLE_RATE 48000
+// Linearly change the mix this much for every audio frame e.g. 0.01 means it takes 100 frames or
+// ~2.1 ms @ 48 kHz for the sample rate to fully change.
+#define SYNCER_SWITCH_SPEED 0.01
+// While syncer is mixing between two resamplers to seamlessly change sample rate, their output frame
+// count may not match, in that case any overflow frames are stored in a buffer with length
+// SYNCER_AB_MIX_OVERFLOW_MAX_FRAMES. This buffer should never get very full because if the two
+// resamplers are getting significantly out of phase it will cause artifacts. To avoid this, only change
+// the sample rate by a small amount each time.
+#define SYNCER_AB_MIX_OVERFLOW_MAX_FRAMES 64
+// In percent. For example: for 44100 Hz and 8% the transition frequency is (1 - 8/100) * (44100 / 2) = 20286 Hz
+#define SYNCER_TRANSITION_BAND 8.0
 #define MAX_ENDPOINTS 16
 #define MAX_DEVICE_NAME_LEN 100
 #define MAX_NET_IF_NAME_LEN 20
@@ -48,8 +69,6 @@ globals_declare1ff(audio, levelSlowRelease)
 globals_declare1ff(audio, levelFastAttack)
 globals_declare1ff(audio, levelFastRelease)
 globals_declare1ui(audio, encoding)
-globals_declare1i(audio, receiverSync) // Tracks drift between sender and receiver audio callbacks
-globals_declare1ff(audio, receiverSyncFilt)
 
 globals_declare1i(opus, bitrate) // In bits per second
 globals_declare1i(opus, frameSize) // Normally 240 samples = 5 ms @ 48 kHz
@@ -82,7 +101,10 @@ globals_declare1ui(statsCh1Audio, bufferOverrunCount)
 globals_declare1ui(statsCh1Audio, bufferUnderrunCount)
 globals_declare1ui(statsCh1Audio, encodeThreadJitterCount)
 globals_declare1ui(statsCh1Audio, audioLoopXrunCount)
+globals_declare1i(statsCh1Audio, receiverSync) // Tracks drift between sender and receiver audio callbacks
+globals_declare1ff(statsCh1Audio, receiverSyncFilt)
 globals_declare1ui(statsCh1AudioOpus, codecErrorCount)
 globals_declare1ui(statsCh1AudioPCM, crcFailCount)
+globals_declare1ui(statsCh1Audio, codecRingActive) // Is set to true once both sides of the ring are enqueuing/dequeuing samples (decodeRing for receiver or encodeRing for sender)
 
 #endif

@@ -29,10 +29,9 @@ Realtime audio transport with multihoming.
 ## Platforms
 
 - [x] macOS x64
-- [x] Android (receiver)
-- [x] Android (sender)
+- [x] Android
 - [x] macOS ARM
-- [ ] Raspberry Pi
+- [x] Raspberry Pi
 
 ## Setup (common)
 

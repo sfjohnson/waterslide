@@ -12,7 +12,10 @@
 #include "utils.h"
 #include "wsocket.h"
 
-#define UNUSED __attribute__((unused))
+// DEBUG: Fix this evil hack. For some reason SO_BINDTODEVICE is not in <bits/socket-constants.h> for RPi
+#if defined(__linux__)
+#define SO_BINDTODEVICE	25
+#endif
 
 static void handleRes (wsocket_t *sock, uint8_t *buf, ssize_t len) {
   enum wsocket_state currentState = sock->state;
@@ -62,7 +65,7 @@ static void *recvLoop (void *arg) {
     int err = poll(&pfd, 1, -1);
     if (err != 1 || pfd.revents != POLLIN) {
       // TODO: implement closing this socket and re-opening it on a timer
-      usleep(1000);
+      utils_usleep(1000);
       continue;
     }
 
@@ -72,7 +75,7 @@ static void *recvLoop (void *arg) {
     // If recv failed, ignore it but wait a bit first
     // TODO: implement closing this socket and re-opening it on a timer
     if (recvLen < 0 || recvAddrLen != sizeof(recvAddr)) {
-      usleep(1000);
+      utils_usleep(1000);
       continue;
     }
 
@@ -162,7 +165,7 @@ int wsocket_waitForPeerAddr (wsocket_t *sock) {
     memcpy(&sendBuf[32], sock->peerPubKey, 32);
     sendBuf[64] = sock->epIndex;
     sendto(sock->sock, sendBuf, sizeof(sendBuf), 0, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
-    usleep(500000);
+    utils_usleep(500000);
   }
 
   return 0;
