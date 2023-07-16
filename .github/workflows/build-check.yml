@@ -42,7 +42,7 @@ jobs:
       - name: Make RPi
         run: make -f rpi.mk
         env:
-          TOOLCHAIN: ~/arm-rpi-linux-gnueabihf
+          TOOLCHAIN: /home/runner/arm-rpi-linux-gnueabihf
 
       - name: Make Android
         run: |
