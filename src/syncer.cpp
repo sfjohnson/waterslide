@@ -104,11 +104,6 @@ int syncer_init (double srcRate, double dstRate, int maxInBufFrames, ck_ring_t *
     abMixOverflowBufs = new double*[networkChannelCount];
     tempBufsDouble = new double*[networkChannelCount];
 
-    // DEBUG: sync test
-    // srcRate negative offset makes receiverSync become less negative (increasing), and makes the ring increase in size
-    // srcRate positive offset makes the ring become less full
-    // srcRate -= 10.0;
-
     for (int i = 0; i < networkChannelCount; i++) {
       resampsA[i] = new CDSPResampler24(srcRate, dstRate, maxInBufFrames, SYNCER_TRANSITION_BAND);
       resampsB[i] = new CDSPResampler24(srcRate, dstRate, maxInBufFrames, SYNCER_TRANSITION_BAND);
@@ -346,6 +341,8 @@ static int stepResampState (double **samples, int frameCount, bool setStats, int
         // mixResamps completed successfully
         abMix = 0.0;
         resampState = onA ? RunningB : RunningA;
+        // DEBUG: test
+        // eventrecorder_event1i(2, 0);
       }
       break;
 
@@ -402,8 +399,11 @@ static int syncer_enqueueBuf(enum InBufTypeEnum inBufType, const void *inBuf, in
 
     if (seqDiff >= 1) {
       // We can assume every packet has outFrameCount frames and fill in any skipped packets (skipped means seqDiff > 1)
-      // DEBUG: does this assumption become incorrect enough to cause issues when we switch sample rate?
+      // NOTE: If we lose packet(s) while a rate change is happening it might throw receiverSync off a bit.
+      // DEBUG: we should be adding this instead (and receiverSync should be a double): (inFrameCount*_srcRate/_dstRate) * seqDiff
       globals_add1i(statsCh1Audio, receiverSync, outFrameCount * seqDiff);
+      // DEBUG: test
+      // eventrecorder_event1i(1, outFrameCount * seqDiff);
     }
   }
   seqLast = seq;

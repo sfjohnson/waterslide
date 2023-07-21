@@ -36,12 +36,6 @@ static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, uns
   if (globals_get1ui(statsCh1Audio, codecRingActive)) {
     globals_add1i(statsCh1Audio, receiverSync, -outBufFrameCount);
   }
-  
-  // DEBUG: test
-  static double receiverSyncFiltLpf = 0.0f;
-
-  receiverSyncFiltLpf += 0.001f * ((double)globals_get1i(statsCh1Audio, receiverSync) - receiverSyncFiltLpf);
-  globals_set1ff(statsCh1Audio, receiverSyncFilt, receiverSyncFiltLpf);
 
   if (underrun) {
     // Let the ring fill up to about half-way before pulling from it again, while outputting silence.

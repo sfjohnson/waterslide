@@ -17,6 +17,7 @@
 #include "monitor.h"
 
 // DEBUG: test
+// #define SYNC_RECORD_LENGTH 12000 // 10 mins
 // #include "syncer.h"
 
 static int audioChannelCount, endpointCount;
@@ -121,6 +122,7 @@ static void *statsLoop (UNUSED void *arg) {
 
   // DEBUG: test
   // FILE *syncDataFile = fopen("receiver-sync.data", "w+b");
+  // uint8_t *syncDataBuf = (uint8_t *)malloc(8 * SYNC_RECORD_LENGTH);
   // int debugCounter = 0;
   // printf("writing to receiver-sync.data...\n");
   // TODO: need a flag here to break out of the while loop and deinit properly
@@ -129,16 +131,17 @@ static void *statsLoop (UNUSED void *arg) {
     if (wsClient == NULL) continue;
 
     // DEBUG: test
-    // if (debugCounter < 24000) { // 20 mins
+    // if (debugCounter < SYNC_RECORD_LENGTH) {
     //   double receiverSync;
     //   globals_get1ff(statsCh1Audio, receiverSyncFilt, &receiverSync);
-    //   fwrite(&receiverSync, 8, 1, syncDataFile);
+    //   memcpy(&syncDataBuf[8*debugCounter], &receiverSync, 8);
 
-    //   // if (debugCounter == 12000) {
-    //   //   printf("syncer_changeRate returned %d\n", syncer_changeRate(47999.9));
-    //   // }
+    //   if (debugCounter == 6000) { // 10 min
+    //     printf("syncer_changeRate returned %d\n", syncer_changeRate(47999.7));
+    //   }
 
-    // } else if (debugCounter == 24000) {
+    // } else if (debugCounter == SYNC_RECORD_LENGTH) {
+    //   fwrite(syncDataBuf, 8 * SYNC_RECORD_LENGTH, 1, syncDataFile);
     //   fclose(syncDataFile);
     //   printf("done!\n");
     // }

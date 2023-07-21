@@ -11,10 +11,13 @@ extern "C" {
 int syncer_init (double srcRate, double dstRate, int maxInBufFrames, ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize);
 
 // NOTES:
+// - This function is thread-safe (call it from anywhere).
 // - This function is asynchronous and returns immediately but the actual rate change takes a while to complete.
 // - The rate change could take > 100 ms due to constructing a new resampler which is expensive.
 // - Changing the srcRate will cause a smooth blip on the waveform lasting a few ms, but it should not cause a click. I'm not sure if it's very audible.
 // - Try to keep each rate change within +/- 10 Hz.
+// - Decreasing srcRate makes receiverSync become less negative (increasing), and makes the ring increase in size.
+// - Increasing srcRate makes the ring become less full.
 int syncer_changeRate (double srcRate);
 
 // NOTES:

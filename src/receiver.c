@@ -177,6 +177,13 @@ static void onBlockCh1 (const uint8_t *buf, int sbn) {
       slipEsc = false;
       tryDecode = false;
     }
+
+    if (sbnDiff >= 1) {
+      // DEBUG: test
+      static double receiverSyncFiltLpf = 0.0;
+      receiverSyncFiltLpf += 0.005 * sbnDiff * ((double)globals_get1i(statsCh1Audio, receiverSync) - receiverSyncFiltLpf);
+      globals_set1ff(statsCh1Audio, receiverSyncFilt, receiverSyncFiltLpf);
+    }
   }
 
   sbnLast = sbn;

@@ -32,6 +32,8 @@ static void dmaBufWrite (uint8_t *dmaBuf, unsigned int frameCount) {
 
   if (globals_get1ui(statsCh1Audio, codecRingActive)) {
     globals_add1i(statsCh1Audio, receiverSync, -frameCount);
+    // DEBUG: test
+    // eventrecorder_event1i(0, -frameCount);
   }
 
   if (ringUnderrun) {
@@ -99,6 +101,7 @@ static void dmaBufRead (const uint8_t *dmaBuf, unsigned int frameCount) {
             inSampleDouble = sampleInt > 0 ? sampleInt/32767.0 : sampleInt/32768.0;
           }
 
+          // DEBUG: I think we need to check for overrun here before enqueuing. We are doing it above for AUDIO_ENCODING_OPUS when we call syncer_enqueueBuf
           utils_ringEnqueueSample(_ring, _ringBuf, inSampleDouble);
           utils_setAudioStats(inSampleDouble, j);
         }
