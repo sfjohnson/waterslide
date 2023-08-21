@@ -6,7 +6,9 @@
 #include <atomic>
 #include <stdint.h>
 #include <string.h>
-#include "uWebSockets/libuwebsockets.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include "globals.h"
 // TODO: fix up the generated protobufs code so we can turn pedantic back on
 #pragma GCC diagnostic push
@@ -16,37 +18,7 @@
 #include "config.h"
 #include "monitor.h"
 
-static int audioChannelCount, endpointCount;
-// DEBUG: two threads are accessing the members of wsClient (wsThread and statsThread). Make sure these are thread-safe
-static std::atomic<uws_ws_t*> wsClient = NULL;
-
-static void openHandler(uws_ws_t *ws) {
-  wsClient = ws;
-}
-
-static void messageHandler(UNUSED uws_ws_t *ws, UNUSED const char *msg, UNUSED size_t length, UNUSED unsigned char opCode) {
-  // printf("message (code: %d, length: %zu): %.*s\n", opCode, length, length, msg);
-}
-
-static void closeHandler(UNUSED uws_ws_t *ws, UNUSED int code) {
-  wsClient = NULL;
-}
-
-static void listenHandler(void *listenSocket) {
-  if (listenSocket) {
-    int wsPort = globals_get1i(monitor, wsPort);
-    printf("Monitor: WebSocket server listening on port %d\n", wsPort);
-  }
-}
-
-static void *startWsApp (UNUSED void *arg) {
-  uws_app_t *app = uws_createApp();
-  uws_appWs(app, "/*", openHandler, messageHandler, closeHandler);
-  uws_appListen(app, globals_get1i(monitor, wsPort), listenHandler);
-  uws_appRun(app);
-
-  return NULL;
-}
+static int audioChannelCount, endpointCount, sock;
 
 // map an array of bins (unsigned ints) to an array of uint8 values that can be displayed in a heatmap graph
 static void mapStreamMeterBins (unsigned int *rawBins, uint8_t *mappedBins) {
@@ -119,7 +91,6 @@ static void *statsLoop (UNUSED void *arg) {
   // TODO: need a flag here to break out of the while loop and deinit properly
   while (true) {
     usleep(50000);
-    if (wsClient == NULL) continue;
 
     for (int i = 0; i < audioChannelCount; i++) {
       protoAudioChannels[i]->set_clippingcount(globals_get1uiv(statsCh1Audio, clippingCounts, i));
@@ -169,8 +140,14 @@ static void *statsLoop (UNUSED void *arg) {
 
     std::string protoData;
     proto.SerializeToString(&protoData);
-    int error = uws_wsSend(wsClient, protoData.c_str(), protoData.length(), UWS_OPCODE_BINARY);
-    if (error < 0) printf("uws_wsSend error: %d\n", error); // DEBUG: log
+    ssize_t sendLen = send(sock, protoData.c_str(), protoData.length(), 0);
+    if (sendLen < 0) {
+      // if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      //   printf("monitor-udp: send congestion\n"); // DEBUG: log
+      // } else {
+      //   printf("monitor-udp: send error %d\n", errno); // DEBUG: log
+      // }
+    }
   }
 
   delete[] protoAudioChannels;
@@ -185,11 +162,20 @@ int monitor_init (void) {
   audioChannelCount = globals_get1i(audio, networkChannelCount);
   endpointCount = globals_get1i(endpoints, endpointCount);
 
-  pthread_t wsThread, statsThread;
-  int err = pthread_create(&wsThread, NULL, startWsApp, NULL);
-  if (err != 0) return -2;
-  err = pthread_create(&statsThread, NULL, statsLoop, NULL);
-  if (err != 0) return -3;
+  struct sockaddr_in sendAddr;
+  memset(&sendAddr, 0, sizeof(sendAddr));
+  sendAddr.sin_family = AF_INET;
+  sendAddr.sin_port = htons(globals_get1i(monitor, udpPort));
+  sendAddr.sin_addr.s_addr = globals_get1ui(monitor, udpAddr);
+  if (sendAddr.sin_port == 0 || sendAddr.sin_addr.s_addr == 0) return -1;
+
+  sock = socket(AF_INET, SOCK_DGRAM, 0);
+  if (sock < 0) return -2;
+
+  if (connect(sock, (struct sockaddr*)&sendAddr, sizeof(sendAddr)) < 0) return -2;
+
+  pthread_t statsThread;
+  if (pthread_create(&statsThread, NULL, statsLoop, NULL) != 0) return -3;
 
   return 0;
 }

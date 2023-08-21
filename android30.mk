@@ -21,8 +21,8 @@ LIBS = -L$(TOOLCHAIN)/sysroot/usr/lib/aarch64-linux-android/30 -lstdc++ -lz -lm 
 
 TARGET = waterslide-android30
 PROTOBUFS = init-config.proto monitor.proto
-SRCSC = main.c audio-linux.c sender.c receiver.c globals.c utils.c slip.c mux.c demux.c endpoint-secure.c pcm.c wsocket.c
-SRCSCPP = syncer.cpp config.cpp monitor.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
+SRCSC = main.c audio-linux.c sender.c receiver.c globals.c utils.c slip.c mux.c demux.c endpoint-secure.c pcm.c wsocket.c event-recorder.c
+SRCSCPP = syncer/enqueue.cpp syncer/resamp-state.cpp syncer/receiver-sync.cpp config.cpp monitor.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
 OBJS = $(subst .c,.o,$(addprefix src/,$(SRCSC))) $(subst .cpp,.o,$(addprefix src/,$(SRCSCPP)))
 
 .PHONY: setup
@@ -32,7 +32,7 @@ all: setup protobufs bin/$(TARGET)
 protobufs: $(PROTOBUFS)
 
 setup:
-	mkdir -p obj/protobufs include/protobufs src/protobufs
+	mkdir -p obj/protobufs obj/syncer include/protobufs src/protobufs
 
 %.proto:
 	$(PROTOC) $(PROTOCFLAGS) protobufs/$@

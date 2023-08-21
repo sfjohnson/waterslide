@@ -21,7 +21,7 @@ static ck_ring_buffer_t *encodeRingBuf;
 static mux_transfer_t transfer;
 static int targetEncodeRingSize, encodeRingMaxSize;
 static int audioFrameSize;
-static int maxEncodedPacketSize;
+static int encodedPacketSize;
 static double networkSampleRate; // Hz
 static xsem_t encodeLoopInitSem;
 static atomic_int encodeLoopStatus = 0;
@@ -31,16 +31,17 @@ static int initOpusEncoder (OpusMSEncoder **encoder) {
   unsigned char mapping[networkChannelCount];
   for (int i = 0; i < networkChannelCount; i++) mapping[i] = i;
 
-  int err;
-  *encoder = opus_multistream_encoder_create(AUDIO_OPUS_SAMPLE_RATE, networkChannelCount, networkChannelCount, 0, mapping, OPUS_APPLICATION_AUDIO, &err);
-  if (err < 0) {
-    printf("Error: opus_multistream_encoder_create failed: %s\n", opus_strerror(err));
+  int err1, err2;
+  *encoder = opus_multistream_encoder_create(AUDIO_OPUS_SAMPLE_RATE, networkChannelCount, networkChannelCount, 0, mapping, OPUS_APPLICATION_AUDIO, &err1);
+  if (err1 < 0) {
+    printf("Error: opus_multistream_encoder_create failed: %s\n", opus_strerror(err1));
     return -1;
   }
 
-  err = opus_multistream_encoder_ctl(*encoder, OPUS_SET_BITRATE(globals_get1i(opus, bitrate)));
-  if (err < 0) {
-    printf("Error: opus_multistream_encoder_ctl failed: %s\n", opus_strerror(err));
+  err1 = opus_multistream_encoder_ctl(*encoder, OPUS_SET_BITRATE(globals_get1i(opus, bitrate)));
+  err2 = opus_multistream_encoder_ctl(*encoder, OPUS_SET_VBR(0));
+  if (err1 < 0 || err2 < 0) {
+    printf("Error: opus_multistream_encoder_ctl failed\n");
     return -2;
   }
 
@@ -67,13 +68,13 @@ static void *startEncodeLoop (UNUSED void *arg) {
   int fecEncodedBufLen = (4+symbolLen) * (sourceSymbolsPerBlock+repairSymbolsPerBlock);
   // fecBlockBuf maximum possible length:
   //   fecBlockBaseLen - 1 (once the length is >= fecBlockBaseLen, block(s) are sent)
-  // + 2*maxEncodedPacketSize (assuming worst-case scenario of every byte being a SLIP escape sequence)
+  // + 2*encodedPacketSize (assuming worst-case scenario of every byte being a SLIP escape sequence)
   // + 1 (for 0xc0)
-  uint8_t *fecBlockBuf = (uint8_t*)malloc(fecBlockBaseLen + 2*maxEncodedPacketSize);
+  uint8_t *fecBlockBuf = (uint8_t*)malloc(fecBlockBaseLen + 2*encodedPacketSize);
   uint8_t *fecEncodedBuf = (uint8_t*)malloc(fecEncodedBufLen);
   float *sampleBufFloat = (float*)malloc(4 * networkChannelCount * audioFrameSize); // For Opus
   double *sampleBufDouble = (double*)malloc(8 * networkChannelCount * audioFrameSize); // For PCM
-  uint8_t *audioEncodedBuf = (uint8_t*)malloc(maxEncodedPacketSize);
+  uint8_t *audioEncodedBuf = (uint8_t*)malloc(encodedPacketSize);
 
   OpusMSEncoder *opusEncoder = NULL;
   pcm_codec_t pcmEncoder = { 0 };
@@ -125,8 +126,6 @@ static void *startEncodeLoop (UNUSED void *arg) {
       globals_add1ui(statsCh1Audio, encodeThreadJitterCount, 1);
     }
 
-    globals_set1ui(statsCh1Audio, codecRingActive, 1);
-
     for (int i = 0; i < networkChannelCount * audioFrameSize; i++) {
       sampleBufDouble[i] = utils_ringDequeueSample(&encodeRing, encodeRingBuf);
       sampleBufFloat[i] = sampleBufDouble[i];
@@ -138,8 +137,8 @@ static void *startEncodeLoop (UNUSED void *arg) {
     int encodedLen = 0;
     switch (audioEncoding) {
       case AUDIO_ENCODING_OPUS:
-        encodedLen = opus_multistream_encode_float(opusEncoder, sampleBufFloat, audioFrameSize, &audioEncodedBuf[2], maxEncodedPacketSize - 2);
-        if (encodedLen < 0) {
+        encodedLen = opus_multistream_encode_float(opusEncoder, sampleBufFloat, audioFrameSize, &audioEncodedBuf[2], encodedPacketSize - 2);
+        if (encodedLen < 0 || encodedLen != encodedPacketSize - 2) {
           globals_add1ui(statsCh1AudioOpus, codecErrorCount, 1);
           continue;
         }
@@ -152,14 +151,6 @@ static void *startEncodeLoop (UNUSED void *arg) {
 
     fecBlockPos += utils_slipEncode(audioEncodedBuf, encodedLen + 2, &fecBlockBuf[fecBlockPos]);
     fecBlockBuf[fecBlockPos++] = 0xc0;
-
-    // Add more terminating bytes if necessary to pad the block to keep the data rate somewhat constant.
-    // DEBUG: fix up the receiver threading code so this isn't necessary.
-    if (audioEncoding == AUDIO_ENCODING_OPUS) {
-      for (int i = 0; i < maxEncodedPacketSize/3 - (encodedLen+2); i++) {
-        fecBlockBuf[fecBlockPos++] = 0xc0;
-      }
-    }
 
     while (fecBlockPos >= fecBlockBaseLen) {
       int fecEncodedLen = raptorq_encodeBlock(
@@ -194,12 +185,13 @@ int sender_init (void) {
   switch (audioEncoding) {
     case AUDIO_ENCODING_OPUS:
       audioFrameSize = globals_get1i(opus, frameSize);
-      maxEncodedPacketSize = globals_get1i(opus, maxPacketSize);
+      // CBR + 2 bytes for sequence number
+      encodedPacketSize = globals_get1i(opus, bitrate) * globals_get1i(opus, frameSize) / (8 * AUDIO_OPUS_SAMPLE_RATE) + 2;
       break;
     case AUDIO_ENCODING_PCM:
       audioFrameSize = globals_get1i(pcm, frameSize);
       // 24-bit samples + 2 bytes for CRC + 2 bytes for sequence number
-      maxEncodedPacketSize = 3 * networkChannelCount * audioFrameSize + 4;
+      encodedPacketSize = 3 * networkChannelCount * audioFrameSize + 4;
       break;
     default:
       printf("Error: Audio encoding %d not implemented.\n", audioEncoding);

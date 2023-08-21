@@ -13,6 +13,7 @@ using namespace std;
 
 // Data types
 // 1i: scalar signed integer (32-bit or 64-bit depending on arch)
+// 1il: scalar signed integer (always 64-bit)
 // 1ui: scalar unsigned integer (32-bit or 64-bit depending on arch)
 // 1iv: individually addressable array of signed integers (32-bit or 64-bit depending on arch)
 // 1uiv: individually addressable array of unsigned integers (32-bit or 64-bit depending on arch)
@@ -22,6 +23,7 @@ using namespace std;
 // 1sv: individually addressable null-terminated char arrays
 
 #define globals_set1i(GROUP, NAME, VALUE) globals_1i_##GROUP##_##NAME = (VALUE)
+#define globals_set1il(GROUP, NAME, VALUE) globals_1il_##GROUP##_##NAME = (VALUE)
 #define globals_set1ui(GROUP, NAME, VALUE) globals_1ui_##GROUP##_##NAME = (VALUE)
 #define globals_set1iv(GROUP, NAME, INDEX, VALUE) globals_1iv_##GROUP##_##NAME[INDEX] = (VALUE)
 #define globals_set1uiv(GROUP, NAME, INDEX, VALUE) globals_1uiv_##GROUP##_##NAME[INDEX] = (VALUE)
@@ -31,6 +33,7 @@ using namespace std;
 #define globals_set1sv(GROUP, NAME, INDEX, VALUE) _globals_set1sv_##GROUP##_##NAME(INDEX, VALUE)
 
 #define globals_get1i(GROUP, NAME) (globals_1i_##GROUP##_##NAME)
+#define globals_get1il(GROUP, NAME) (globals_1il_##GROUP##_##NAME)
 #define globals_get1ui(GROUP, NAME) (globals_1ui_##GROUP##_##NAME)
 #define globals_get1iv(GROUP, NAME, INDEX) (globals_1iv_##GROUP##_##NAME[INDEX])
 #define globals_get1uiv(GROUP, NAME, INDEX) (globals_1uiv_##GROUP##_##NAME[INDEX])
@@ -42,6 +45,7 @@ using namespace std;
 #define globals_get1sv(GROUP, NAME, INDEX, VAR, MAX_LEN) _globals_get1sv_##GROUP##_##NAME(INDEX, VAR, MAX_LEN)
 
 #define globals_add1i(GROUP, NAME, VALUE) atomic_fetch_add_explicit(&globals_1i_##GROUP##_##NAME, (int)(VALUE), memory_order_relaxed)
+#define globals_add1il(GROUP, NAME, VALUE) atomic_fetch_add_explicit(&globals_1il_##GROUP##_##NAME, (int_fast64_t)(VALUE), memory_order_relaxed)
 #define globals_add1ui(GROUP, NAME, VALUE) atomic_fetch_add_explicit(&globals_1ui_##GROUP##_##NAME, (unsigned int)(VALUE), memory_order_relaxed)
 #define globals_add1iv(GROUP, NAME, INDEX, VALUE) atomic_fetch_add_explicit(&globals_1iv_##GROUP##_##NAME[INDEX], (int)(VALUE), memory_order_relaxed)
 #define globals_add1uiv(GROUP, NAME, INDEX, VALUE) atomic_fetch_add_explicit(&globals_1uiv_##GROUP##_##NAME[INDEX], (unsigned int)(VALUE), memory_order_relaxed)
@@ -49,6 +53,9 @@ using namespace std;
 // These go in the header file
 #define globals_declare1i(GROUP, NAME) \
 extern atomic_int globals_1i_##GROUP##_##NAME;
+
+#define globals_declare1il(GROUP, NAME) \
+extern atomic_int_fast64_t globals_1il_##GROUP##_##NAME;
 
 #define globals_declare1ui(GROUP, NAME) \
 extern atomic_uint globals_1ui_##GROUP##_##NAME;
@@ -132,6 +139,7 @@ static inline int _globals_set1sv_##GROUP##_##NAME (size_t index, const char *s)
 
 // These go in the source file
 #define globals_define1i(GROUP, NAME) atomic_int globals_1i_##GROUP##_##NAME = 0;
+#define globals_define1il(GROUP, NAME) atomic_int_fast64_t globals_1il_##GROUP##_##NAME = 0;
 #define globals_define1ui(GROUP, NAME) atomic_uint globals_1ui_##GROUP##_##NAME = 0;
 #define globals_define1iv(GROUP, NAME, LEN) atomic_int globals_1iv_##GROUP##_##NAME[LEN] = { 0 };
 #define globals_define1uiv(GROUP, NAME, LEN) atomic_uint globals_1uiv_##GROUP##_##NAME[LEN] = { 0 };

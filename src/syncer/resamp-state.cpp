@@ -1,6 +1,5 @@
-#include <atomic>
 #include <stdio.h>
-#include <string.h>
+#include <atomic>
 #include "xsem.h"
 // TODO: fix anonymous structs in r8brain
 #pragma GCC diagnostic push
@@ -8,12 +7,10 @@
 #include "r8brain-free-src/CDSPResampler.h"
 #pragma GCC diagnostic pop
 #include "globals.h"
-#include "utils.h"
 #include "syncer.h"
 
 using namespace r8b;
 
-enum InBufTypeEnum { S16, S24, S32, F32 };
 enum ResampStateEnum { RunningA, FeedingB, MixingAtoB, RunningB, FeedingA, MixingBtoA, StoppingManager };
 
 static std::atomic<ResampStateEnum> resampState = RunningA;
@@ -24,14 +21,16 @@ static double **abMixOverflowBufs;
 static CDSPResampler24 **resampsA, **resampsB;
 static double resampsARatio, resampsBRatio;
 
-static ck_ring_t *_ring;
-static ck_ring_buffer_t *_ringBuf;
-static int _fullRingSize, _maxInBufFrames;
+static int _maxInBufFrames;
 static double _srcRate, _dstRate;
 static pthread_t resampManagerThread;
 static xsem_t resampManagerSem; // post this when resamp manager has work to do
 static int networkChannelCount, deviceChannelCount;
-static double **inBufsDouble, **tempBufsDouble;
+static double **tempBufsDouble;
+
+/////////////////////
+// private
+/////////////////////
 
 // CDSPResampler24 construction and destruction can be expensive so it's done in this lower priority thread to not cause an audio glitch
 static void *startResampManager (UNUSED void *arg) {
@@ -50,7 +49,7 @@ static void *startResampManager (UNUSED void *arg) {
         for (int i = 0; i < networkChannelCount; i++) {
           delete resampsB[i];
           resampsB[i] = new CDSPResampler24(_srcRate, _dstRate, _maxInBufFrames, SYNCER_TRANSITION_BAND);
-          resampsBRatio = _srcRate / _dstRate;
+          resampsBRatio = _dstRate / _srcRate;
           if (i == 0) {
             feedSampleCount = resampsB[i]->getInputRequiredForOutput(1);
           } else if (resampsB[i]->getInputRequiredForOutput(1) != feedSampleCount) {
@@ -65,7 +64,7 @@ static void *startResampManager (UNUSED void *arg) {
         for (int i = 0; i < networkChannelCount; i++) {
           delete resampsA[i];
           resampsA[i] = new CDSPResampler24(_srcRate, _dstRate, _maxInBufFrames, SYNCER_TRANSITION_BAND);
-          resampsARatio = _srcRate / _dstRate;
+          resampsARatio = _dstRate / _srcRate;
           if (i == 0) {
             feedSampleCount = resampsA[i]->getInputRequiredForOutput(1);
           } else if (resampsA[i]->getInputRequiredForOutput(1) != feedSampleCount) {
@@ -84,31 +83,24 @@ static void *startResampManager (UNUSED void *arg) {
   return NULL;
 }
 
-int syncer_init (double srcRate, double dstRate, int maxInBufFrames, ck_ring_t *ring, ck_ring_buffer_t *ringBuf, int fullRingSize) {
+int _syncer_initResampState (double srcRate, double dstRate, int maxInBufFrames) {
   try {
-    _ring = ring;
-    _ringBuf = ringBuf;
-    _fullRingSize = fullRingSize;
     _srcRate = srcRate;
     _dstRate = dstRate;
     _maxInBufFrames = maxInBufFrames;
-
-    utils_setAudioLevelFilters();
 
     networkChannelCount = globals_get1i(audio, networkChannelCount);
     deviceChannelCount = globals_get1i(audio, deviceChannelCount);
 
     resampsA = new CDSPResampler24*[networkChannelCount];
     resampsB = new CDSPResampler24*[networkChannelCount];
-    inBufsDouble = new double*[networkChannelCount];
     abMixOverflowBufs = new double*[networkChannelCount];
     tempBufsDouble = new double*[networkChannelCount];
 
     for (int i = 0; i < networkChannelCount; i++) {
       resampsA[i] = new CDSPResampler24(srcRate, dstRate, maxInBufFrames, SYNCER_TRANSITION_BAND);
       resampsB[i] = new CDSPResampler24(srcRate, dstRate, maxInBufFrames, SYNCER_TRANSITION_BAND);
-      resampsARatio = resampsBRatio = srcRate / dstRate;
-      inBufsDouble[i] = new double[maxInBufFrames];
+      resampsARatio = resampsBRatio = dstRate / srcRate;
       abMixOverflowBufs[i] = new double[SYNCER_AB_MIX_OVERFLOW_MAX_FRAMES];
     }
 
@@ -119,47 +111,6 @@ int syncer_init (double srcRate, double dstRate, int maxInBufFrames, ck_ring_t *
   }
 
   return 0;
-}
-
-int syncer_changeRate (double srcRate) {
-  if (resampState != RunningA && resampState != RunningB) return -1; // currently switching
-
-  _srcRate = srcRate;
-  xsem_post(&resampManagerSem);
-  return 0;
-}
-
-static int enqueueSamples (double **samples, int frameCount, bool setStats) {
-  // Don't ever let the ring fill completely, that way the channels stay in order
-  if ((int)utils_ringSize(_ring) + networkChannelCount*frameCount > _fullRingSize) {
-    globals_add1ui(statsCh1Audio, bufferOverrunCount, 1);
-    return -1;
-  }
-
-  // DEBUG: test code for outputting resampState on audio channel 2
-  // ResampStateEnum rs = resampState.load();
-  // for (int i = 0; i < frameCount; i++) {
-  //   for (int j = 0; j < networkChannelCount; j++) {
-  //     double rsd = rs / 3.5 - 0.9;
-  //     if (setStats) utils_setAudioStats(samples[j][i], j);
-  //     if (j == 1) {
-  //       utils_ringEnqueueSample(_ring, _ringBuf, rsd);
-  //     } else {
-  //       utils_ringEnqueueSample(_ring, _ringBuf, samples[j][i]);
-  //     }
-  //   }
-  // }
-
-  for (int i = 0; i < frameCount; i++) {
-    for (int j = 0; j < networkChannelCount; j++) {
-      // NOTE: Sometimes the resampler pushes things a little bit outside of (-1.0, 1.0).
-      // If that happens, it will show on the stats.
-      if (setStats) utils_setAudioStats(samples[j][i], j);
-      utils_ringEnqueueSample(_ring, _ringBuf, samples[j][i]);
-    }
-  }
-
-  return frameCount;
 }
 
 static int mixResamps (double **samples, int inFrameCount, int offset, CDSPResampler24 **fromResamps, CDSPResampler24 **toResamps, bool fromOverflows, bool setStats) {
@@ -240,18 +191,20 @@ static int mixResamps (double **samples, int inFrameCount, int offset, CDSPResam
     return returnErr;
   }
 
-  if (enqueueSamples(tempBufsDouble, outFrameCount, setStats) < 0) {
+  returnErr = _syncer_enqueueSamples(tempBufsDouble, outFrameCount, setStats);
+  if (returnErr < 0) {
     abMixOverflowLen = 0;
     abMix = 0.0;
-    return -5;
+    return returnErr;
   }
 
   if (abMix >= 1.0) {
     if (!fromOverflows) { // if fromOverflows is true, discard contents of abMixOverflowBufs
-      if (enqueueSamples(abMixOverflowBufs, abMixOverflowLen, setStats) < 0) {
+      returnErr = _syncer_enqueueSamples(abMixOverflowBufs, abMixOverflowLen, setStats);
+      if (returnErr < 0) {
         abMixOverflowLen = 0;
         abMix = 0.0;
-        return -6;
+        return returnErr;
       }
       outFrameCount += abMixOverflowLen;
     }
@@ -283,10 +236,10 @@ static int processResamp (double **samples, int frameCount, CDSPResampler24 **re
     outFrameCount = resamps[i]->process(samples[i], frameCount, tempBufsDouble[i]);
   }
 
-  return enqueueSamples(tempBufsDouble, outFrameCount, setStats);
+  return _syncer_enqueueSamples(tempBufsDouble, outFrameCount, setStats);
 }
 
-static int stepResampState (double **samples, int frameCount, bool setStats, int offset = 0) {
+int _syncer_stepResampState (double **samples, int frameCount, bool setStats, int offset) {
   int outFrameCount = 0, result;
   CDSPResampler24 **fromResamps, **toResamps;
   ResampStateEnum rs = resampState.load();
@@ -307,7 +260,7 @@ static int stepResampState (double **samples, int frameCount, bool setStats, int
       if (outFrameCount < 0) {
         // ring is full, don't bother with smooth rate change
         resampState = onA ? RunningA : RunningB;
-        return -7;
+        return outFrameCount;
       }
 
       fromResamps = onA ? resampsA : resampsB;
@@ -317,10 +270,10 @@ static int stepResampState (double **samples, int frameCount, bool setStats, int
       } else if (remainingSampleCount > 0) {
         resampState = onA ? MixingBtoA : MixingAtoB;
         // run mixResamps on the remaining samples that were not fed to resamps
-        result = stepResampState(samples, frameCount, setStats, processSampleCount);
+        result = _syncer_stepResampState(samples, frameCount, setStats, processSampleCount);
         if (result < 0) {
           resampState = onA ? RunningA : RunningB;
-          return -8;
+          return result;
         }
         outFrameCount += result;
       }
@@ -328,7 +281,7 @@ static int stepResampState (double **samples, int frameCount, bool setStats, int
 
     case MixingAtoB:
     case MixingBtoA:
-      fromOverflows = onA ? resampsARatio < resampsBRatio : resampsBRatio < resampsARatio;
+      fromOverflows = onA ? resampsARatio > resampsBRatio : resampsBRatio > resampsARatio;
       fromResamps = onA ? resampsA : resampsB;
       toResamps = onA ? resampsB : resampsA;
       outFrameCount = mixResamps(samples, frameCount, offset, fromResamps, toResamps, fromOverflows, setStats);
@@ -341,106 +294,60 @@ static int stepResampState (double **samples, int frameCount, bool setStats, int
         // mixResamps completed successfully
         abMix = 0.0;
         resampState = onA ? RunningB : RunningA;
-        // DEBUG: test
-        // eventrecorder_event1i(2, 0);
       }
       break;
 
     case StoppingManager:
       // we should not be here!
-      return -9;
+      return -5;
   }
 
   return outFrameCount;
 }
 
-// NOTES:
-// - This should only be called from one thread (not thread-safe).
-// - This must be audio callback safe (no syscalls).
-// - seq must be negative for sender.
-// returns: number of audio frames added to ring (after resampling), or negative error code
-
-static int syncer_enqueueBuf(enum InBufTypeEnum inBufType, const void *inBuf, int inFrameCount, int inChannelCount, bool setStats, int seq) {
-  // receiverSync
-  static int seqLast = -1;
-
-  for (int i = 0; i < networkChannelCount; i++) {
-    for (int j = 0; j < inFrameCount; j++) {
-      // If the inBuf has more channels than we want to send over the network, use the first n channels of the inBuf.
-      switch (inBufType) {
-        case S16:
-          inBufsDouble[i][j] = utils_s16ToDouble((const int16_t *)inBuf, inChannelCount*j + i);
-          break;
-        case S24:
-          inBufsDouble[i][j] = utils_s24ToDouble((const uint8_t *)inBuf, inChannelCount*j + i);
-          break;
-        case S32:
-          inBufsDouble[i][j] = utils_s32ToDouble((const int32_t *)inBuf, inChannelCount*j + i);
-          break;
-        case F32:
-          inBufsDouble[i][j] = ((const float *)inBuf)[inChannelCount*j + i];
-          break;
-      }
-    }
-  }
-
-  int outFrameCount = stepResampState(inBufsDouble, inFrameCount, setStats);
-  if (outFrameCount < 0) return outFrameCount;
-
-  // receiverSync
-  if (seqLast >= 0) {
-    int seqDiff;
-    if (seqLast - seq > 32768) {
-      // Overflow
-      seqDiff = 65536 - seqLast + seq;
-    } else {
-      seqDiff = seq - seqLast;
-    }
-
-    if (seqDiff >= 1) {
-      // We can assume every packet has outFrameCount frames and fill in any skipped packets (skipped means seqDiff > 1)
-      // NOTE: If we lose packet(s) while a rate change is happening it might throw receiverSync off a bit.
-      // DEBUG: we should be adding this instead (and receiverSync should be a double): (inFrameCount*_srcRate/_dstRate) * seqDiff
-      globals_add1i(statsCh1Audio, receiverSync, outFrameCount * seqDiff);
-      // DEBUG: test
-      // eventrecorder_event1i(1, outFrameCount * seqDiff);
-    }
-  }
-  seqLast = seq;
-
-  return outFrameCount;
-}
-
-int syncer_enqueueBufS16 (const int16_t *inBuf, int inFrameCount, int inChannelCount, bool setStats, int seq) {
-  return syncer_enqueueBuf(S16, inBuf, inFrameCount, inChannelCount, setStats, seq);
-}
-
-int syncer_enqueueBufS24Packed (const uint8_t *inBuf, int inFrameCount, int inChannelCount, bool setStats, int seq) {
-  return syncer_enqueueBuf(S24, inBuf, inFrameCount, inChannelCount, setStats, seq);
-}
-
-int syncer_enqueueBufS32 (const int32_t *inBuf, int inFrameCount, int inChannelCount, bool setStats, int seq) {
-  return syncer_enqueueBuf(S32, inBuf, inFrameCount, inChannelCount, setStats, seq);
-}
-
-int syncer_enqueueBufF32 (const float *inBuf, int inFrameCount, int inChannelCount, bool setStats, int seq) {
-  return syncer_enqueueBuf(F32, inBuf, inFrameCount, inChannelCount, setStats, seq);
-}
-
-void syncer_deinit (void) {
+void _syncer_deinitResampState (void) {
   resampState = StoppingManager;
   xsem_post(&resampManagerSem);
   pthread_join(resampManagerThread, NULL);
   xsem_destroy(&resampManagerSem);
 
   for (int i = 0; i < networkChannelCount; i++) {
-    delete[] inBufsDouble[i];
     delete[] abMixOverflowBufs[i];
   }
 
   delete[] resampsA;
   delete[] resampsB;
-  delete[] inBufsDouble;
   delete[] tempBufsDouble;
   delete[] abMixOverflowBufs;
+}
+
+/////////////////////
+// public
+/////////////////////
+
+// NOTE: this is thread-safe because if the manager thread is modifying
+// resamps(A|B)Ratio, it will be the opposite to the one we are reading here,
+// protected by resampState which is atomic.
+double syncer_getRateRatio (void) {
+  switch (resampState) {
+    case RunningA:
+    case FeedingB:
+    case MixingAtoB:
+      return resampsARatio;
+    case RunningB:
+    case FeedingA:
+    case MixingBtoA:
+      return resampsBRatio;
+    case StoppingManager:
+      return 1.0; // should not be calling this after deinit, just return whatever
+  }
+  return 1.0; // never gonna be here, return whatever to make g++ happy
+}
+
+int syncer_changeRate (double srcRate) {
+  if (resampState != RunningA && resampState != RunningB) return -1; // currently switching
+
+  _srcRate = srcRate;
+  xsem_post(&resampManagerSem);
+  return 0;
 }

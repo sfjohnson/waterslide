@@ -270,8 +270,7 @@ See `protobufs/init-config.proto` and `include/globals.h` for more information.
     },
     "opus": {
       "bitrate": 256000,
-      "frameSize": 240,
-      "maxPacketSize": 250
+      "frameSize": 240
     },
     "levelSlowAttack": 0.004,
     "levelSlowRelease": 0.0008,
@@ -366,8 +365,7 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
     },
     "opus": {
       "bitrate": 256000,
-      "frameSize": 240,
-      "maxPacketSize": 250
+      "frameSize": 240
     },
     "levelSlowAttack": 0.004,
     "levelSlowRelease": 0.0008,

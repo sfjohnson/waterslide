@@ -24,7 +24,6 @@ message InitConfigProto {
   message Opus { // networkSampleRate is always 48000
     int32 bitrate = 1; // 128000 bps per channel is a good starting point. This value is the total bitrate not per-channel bitrate.
     int32 frameSize = 2; // 240 samples = 5 ms @ 48 kHz // https://www.audiokinetic.com/library/edge/?source=Help&id=opus_soft_parameters
-    int32 maxPacketSize = 3; // Packets with 120 frames at 256 kbps stereo are around 80 to 130 bytes. This value also affects the minimum data rate.
   }
 
   message PCM {
@@ -92,6 +91,8 @@ message InitConfigProto {
   message Monitor {
     int32 wsPort = 1;
     int32 uiPort = 2;
+    int32 udpPort = 3;
+    bytes udpAddr = 4;
   }
 
   Mode mode = 1;

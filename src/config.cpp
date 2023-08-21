@@ -201,10 +201,23 @@ int config_init (const char *b64ConfigStr) {
   const uint8_t *serverAddrBuf = (const uint8_t*)initConfig.discovery().serveraddr().c_str();
   if (serverAddrLen == 4) {
     // IPv4
-    uint32_t serverAddrVal = 0;
-    memcpy(&serverAddrVal, serverAddrBuf, 4);
-    globals_set1ui(discovery, serverAddr, serverAddrVal);
+    uint32_t addrVal = 0;
+    memcpy(&addrVal, serverAddrBuf, 4);
+    globals_set1ui(discovery, serverAddr, addrVal);
   } else if (serverAddrLen == 16) {
+    // IPv6
+    printf("Init config: IPv6 is not implemented!\n");
+    return -3;
+  }
+
+  size_t udpAddrLen = initConfig.monitor().udpaddr().length();
+  const uint8_t *udpAddrBuf = (const uint8_t*)initConfig.monitor().udpaddr().c_str();
+  if (udpAddrLen == 4) {
+    // IPv4
+    uint32_t addrVal = 0;
+    memcpy(&addrVal, udpAddrBuf, 4);
+    globals_set1ui(monitor, udpAddr, addrVal);
+  } else if (udpAddrLen == 16) {
     // IPv6
     printf("Init config: IPv6 is not implemented!\n");
     return -3;
@@ -223,7 +236,7 @@ int config_init (const char *b64ConfigStr) {
   globals_set1i(mux, maxPacketSize, initConfig.mux().maxpacketsize());
 
   globals_set1i(audio, networkChannelCount, networkChannelCount);
-  globals_set1i(audio, deviceSampleRate, initConfig.audio().devicesamplerate());
+  globals_set1ff(audio, deviceSampleRate, initConfig.audio().devicesamplerate());
   globals_set1i(audio, decodeRingLength, initConfig.audio().decoderinglength());
 
   #if defined(__linux__) || defined(__ANDROID__)
@@ -252,7 +265,6 @@ int config_init (const char *b64ConfigStr) {
     globals_set1ui(audio, encoding, AUDIO_ENCODING_OPUS);
     globals_set1i(opus, bitrate, initConfig.audio().opus().bitrate());
     globals_set1i(opus, frameSize, initConfig.audio().opus().framesize());
-    globals_set1i(opus, maxPacketSize, initConfig.audio().opus().maxpacketsize());
     globals_set1i(audio, networkSampleRate, 48000);
 
   } else if (initConfig.audio().has_pcm()) {
@@ -272,6 +284,7 @@ int config_init (const char *b64ConfigStr) {
   globals_set1i(fec, repairSymbolsPerBlock, initConfig.fec().repairsymbolsperblock());
 
   globals_set1i(monitor, wsPort, initConfig.monitor().wsport());
+  globals_set1i(monitor, udpPort, initConfig.monitor().udpport());
 
   return 0;
 }

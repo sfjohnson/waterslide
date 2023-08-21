@@ -20,21 +20,30 @@ static ck_ring_buffer_t *decodeRingBuf;
 
 static unsigned int audioEncoding;
 static int networkChannelCount;
-static int maxEncodedPacketSize, audioFrameSize, decodeRingMaxSize;
+static int encodedPacketSize, audioFrameSize, decodeRingMaxSize;
 static float *sampleBufFloat;
 static uint8_t *audioEncodedBuf;
 static int audioEncodedBufPos = 0;
 static bool slipEsc = false;
-// static double avgAudioFramesPerBlock = 0.0;
 
 // returns: number of audio frames added to decodeRing (after resampling), or negative error code
 static int decodePacket (const uint8_t *buf, int len) {
   static bool overrun = false;
+  static bool firstPacket = true;
+
+  // DEBUG: hack to prevent large seqDiff value and opus codec error
+  if (firstPacket) {
+    firstPacket = false;
+    return 0;
+  }
 
   if (len < 2) return -1;
   int seq = utils_readU16LE(buf);
   buf += 2;
   len -= 2;
+
+  // update receiver sync
+  syncer_onPacket(seq, audioFrameSize);
 
   int ringCurrentSize = utils_ringSize(&decodeRing);
   globals_add1uiv(statsCh1Audio, streamMeterBins, STATS_STREAM_METER_BINS * ringCurrentSize / decodeRingMaxSize, 1);
@@ -65,16 +74,19 @@ static int decodePacket (const uint8_t *buf, int len) {
     }
   }
 
-  globals_set1ui(statsCh1Audio, codecRingActive, 1);
-
   if (audioEncoding == AUDIO_ENCODING_OPUS) {
-    result = syncer_enqueueBufF32(sampleBufFloat, audioFrameSize, networkChannelCount, false, seq);
+    result = syncer_enqueueBufF32(sampleBufFloat, audioFrameSize, networkChannelCount, false);
   } else { // audioEncoding == AUDIO_ENCODING_PCM
-    result = syncer_enqueueBufS24Packed(pcmSamples, audioFrameSize, networkChannelCount, false, seq);
+    result = syncer_enqueueBufS24Packed(pcmSamples, audioFrameSize, networkChannelCount, false);
   }
-  if (result == -3) {
+
+  if (result == -1) {
+    globals_add1ui(statsCh1Audio, bufferOverrunCount, 1);
     overrun = true;
     return -4;
+  } else if (result < -1) {
+    // some other error besides buffer overrun
+    return result - 3;
   }
 
   return result;
@@ -97,10 +109,10 @@ static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
   for (int i = 0; i < bufLen; i++) {
     if (slipEsc) {
       if (buf[i] == 0xdc) {
-        if (audioEncodedBufPos >= maxEncodedPacketSize) return -1;
+        if (audioEncodedBufPos >= encodedPacketSize) return -1;
         audioEncodedBuf[audioEncodedBufPos++] = 0xc0;
       } else if (buf[i] == 0xdd) {
-        if (audioEncodedBufPos >= maxEncodedPacketSize) return -2;
+        if (audioEncodedBufPos >= encodedPacketSize) return -2;
         audioEncodedBuf[audioEncodedBufPos++] = 0xdb;
       } else {
         return -3;
@@ -125,7 +137,7 @@ static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
     if (buf[i] == 0xdb) {
       slipEsc = true;
     } else {
-      if (audioEncodedBufPos >= maxEncodedPacketSize) return -5;
+      if (audioEncodedBufPos >= encodedPacketSize) return -5;
       audioEncodedBuf[audioEncodedBufPos++] = buf[i];
     }
   }
@@ -139,15 +151,14 @@ static void onBlockCh1 (const uint8_t *buf, int sbn) {
   static int sbnLast = -1;
   bool tryDecode = true;
 
-  if (clock_gettime(CLOCK_MONOTONIC, &tsp) == 0) {
-    // us will be between 0 and 999_999_999 and will roll back to zero every 1000 seconds
-    unsigned int us = 1000000u * (tsp.tv_sec % 1000) + (tsp.tv_nsec / 1000);
-    unsigned int ringPos = globals_get1ui(statsCh1, blockTimingRingPos);
-    globals_set1uiv(statsCh1, blockTimingRing, ringPos, us);
-    if (++ringPos == STATS_BLOCK_TIMING_RING_LEN) ringPos = 0;
-    // NOTE: blockTimingRingPos must only be written to here
-    globals_set1ui(statsCh1, blockTimingRingPos, ringPos);
-  }
+  clock_gettime(CLOCK_MONOTONIC_RAW, &tsp); // NOTE: CLOCK_MONOTONIC has been observed to jump backwards on macOS https://discussions.apple.com/thread/253778121
+  // us will be between 0 and 999_999_999 and will roll back to zero every 1000 seconds
+  int us = 1000000 * (tsp.tv_sec % 1000) + (tsp.tv_nsec / 1000);
+  unsigned int ringPos = globals_get1ui(statsCh1, blockTimingRingPos);
+  globals_set1uiv(statsCh1, blockTimingRing, ringPos, (unsigned int)us);
+  if (++ringPos == STATS_BLOCK_TIMING_RING_LEN) ringPos = 0;
+  // NOTE: blockTimingRingPos must only be written to here
+  globals_set1ui(statsCh1, blockTimingRingPos, ringPos);
 
   if (sbnLast != -1) {
     int sbnDiff;
@@ -159,43 +170,30 @@ static void onBlockCh1 (const uint8_t *buf, int sbn) {
     }
 
     if (sbnDiff == 0) {
-      // Duplicate block
+      // duplicate block, don't decode
       globals_add1ui(statsCh1, dupBlockCount, 1);
       tryDecode = false;
     } else if (sbnDiff < 0) {
-      // Out-of-order old block
+      // out-of-order old block, don't decode
       globals_add1ui(statsCh1, oooBlockCount, 1);
       tryDecode = false;
     } else if (sbnDiff > 1) {
       int blockDroppedCount = sbnDiff - 1;
-      // Out-of-order, previous block(s) were dropped
+      // out-of-order, previous block(s) were dropped, reset state and decode
       globals_add1ui(statsCh1, oooBlockCount, blockDroppedCount);
-      // Fill in decodeRing with zeros based on average block size plus
-      // one assumed lost packet due to resetting of SLIP state
-      // enqueueSilence((int)(blockDroppedCount * avgAudioFramesPerBlock) + audioFrameSize);
       audioEncodedBufPos = 0;
       slipEsc = false;
-      tryDecode = false;
-    }
-
-    if (sbnDiff >= 1) {
-      // DEBUG: test
-      static double receiverSyncFiltLpf = 0.0;
-      receiverSyncFiltLpf += 0.005 * sbnDiff * ((double)globals_get1i(statsCh1Audio, receiverSync) - receiverSyncFiltLpf);
-      globals_set1ff(statsCh1Audio, receiverSyncFilt, receiverSyncFiltLpf);
     }
   }
-
   sbnLast = sbn;
 
-  // Don't bother SLIP decoding duplicate or out-of-order blocks
+  // Don't bother SLIP decoding duplicate or out-of-order old blocks
   if (!tryDecode) return;
 
   int result = slipDecodeBlock(buf, channel1.symbolsPerBlock * channel1.symbolLen);
+
   if (result >= 0) {
-    // avgAudioFramesPerBlock += 0.003 * ((double)result - avgAudioFramesPerBlock);
-    // DEBUG: log
-    // globals_set1uiv(statsEndpoints, bytesOut, 0, (unsigned int)(1000000.0f * avgAudioFramesPerBlock));
+    // NOTE: here result is the total number of frames that were enqueued to decodeRing while decoding this block
   } else if (result == -4) {
     // decodePacket error
   } else {
@@ -212,12 +210,13 @@ int receiver_init (void) {
   switch (audioEncoding) {
     case AUDIO_ENCODING_OPUS:
       audioFrameSize = globals_get1i(opus, frameSize);
-      maxEncodedPacketSize = globals_get1i(opus, maxPacketSize);
+      // CBR + 2 bytes for sequence number
+      encodedPacketSize = globals_get1i(opus, bitrate) * globals_get1i(opus, frameSize) / (8 * AUDIO_OPUS_SAMPLE_RATE) + 2;
       break;
     case AUDIO_ENCODING_PCM:
       audioFrameSize = globals_get1i(pcm, frameSize);
       // 24-bit samples + 2 bytes for CRC + 2 bytes for sequence number
-      maxEncodedPacketSize = 3 * networkChannelCount * audioFrameSize + 4;
+      encodedPacketSize = 3 * networkChannelCount * audioFrameSize + 4;
       break;
     default:
       printf("Error: Audio encoding %d not implemented.\n", audioEncoding);
@@ -229,7 +228,7 @@ int receiver_init (void) {
   globals_set1i(statsCh1Audio, streamBufferSize, decodeRingLength);
 
   sampleBufFloat = (float *)malloc(4 * networkChannelCount * audioFrameSize);
-  audioEncodedBuf = (uint8_t *)malloc(maxEncodedPacketSize);
+  audioEncodedBuf = (uint8_t *)malloc(encodedPacketSize);
   if (sampleBufFloat == NULL || audioEncodedBuf == NULL) return -2;
 
   if (utils_ringInit(&decodeRing, &decodeRingBuf, decodeRingMaxSize) < 0) return -2;

@@ -33,9 +33,7 @@ static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, uns
 
   memset(outBufFloat, 0, 4 * outBufFloatCount);
 
-  if (globals_get1ui(statsCh1Audio, codecRingActive)) {
-    globals_add1i(statsCh1Audio, receiverSync, -outBufFrameCount);
-  }
+  syncer_onAudio(framesPerBuffer);
 
   if (underrun) {
     // Let the ring fill up to about half-way before pulling from it again, while outputting silence.
@@ -70,10 +68,10 @@ static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, uns
 // This is the high-priority audio thread for sender
 static int recordCallback (const void *inputBuffer, UNUSED void *outputBuffer, unsigned long framesPerBuffer, UNUSED const PaStreamCallbackTimeInfo* timeInfo, UNUSED PaStreamCallbackFlags statusFlags, UNUSED void *userData) {
   const float *inBufFloat = (const float *)inputBuffer;
-  
+
   switch (audioEncoding) {
     case AUDIO_ENCODING_OPUS:
-      syncer_enqueueBufF32(inBufFloat, framesPerBuffer, deviceChannelCount, true, -1);
+      syncer_enqueueBufF32(inBufFloat, framesPerBuffer, deviceChannelCount, true);
       break;
 
     case AUDIO_ENCODING_PCM:
@@ -159,7 +157,8 @@ int audio_init (bool receiver) {
     }
   }
 
-  int requestedDeviceSampleRate = globals_get1i(audio, deviceSampleRate);
+  double requestedDeviceSampleRate;
+  globals_get1ff(audio, deviceSampleRate, &requestedDeviceSampleRate);
 
   PaStreamParameters params = { 0 };
   params.device = foundDeviceIndex;
@@ -180,18 +179,18 @@ int audio_init (bool receiver) {
 
   const PaStreamInfo *streamInfo = Pa_GetStreamInfo(stream);
   deviceLatency = receiver ? streamInfo->outputLatency : streamInfo->inputLatency; // seconds
-  int actualDeviceSampleRate = streamInfo->sampleRate; // Hz
+  double actualDeviceSampleRate = streamInfo->sampleRate; // Hz
 
   if (audioEncoding == AUDIO_ENCODING_PCM && !receiver && requestedDeviceSampleRate != actualDeviceSampleRate) {
-    printf("We requested %d Hz but the device requires %d Hz. This is only an issue when using PCM encoding.\n", requestedDeviceSampleRate, actualDeviceSampleRate);
+    printf("We requested %f Hz but the device requires %f Hz. This is only an issue when using PCM encoding.\n", requestedDeviceSampleRate, actualDeviceSampleRate);
     return -9;
   }
 
   // Set the deviceSampleRate global in case PortAudio gave a different sample rate to the one requested.
-  globals_set1i(audio, deviceSampleRate, (int)actualDeviceSampleRate);
+  globals_set1ff(audio, deviceSampleRate, actualDeviceSampleRate);
 
   printf("Device latency (ms): %f\n", 1000.0 * deviceLatency);
-  printf("Device sample rate: %d\n", actualDeviceSampleRate);
+  printf("Device sample rate: %f\n", actualDeviceSampleRate);
 
   return 0;
 }
@@ -209,7 +208,8 @@ int audio_start (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, unsigned int fullRi
 
   int err = 0;
   double networkSampleRate = globals_get1i(audio, networkSampleRate);
-  double deviceSampleRate = globals_get1i(audio, deviceSampleRate);
+  double deviceSampleRate;
+  globals_get1ff(audio, deviceSampleRate, &deviceSampleRate);
 
   if (!_receiver && audioEncoding == AUDIO_ENCODING_OPUS) {
     // Calculate the maximum value that framesPerBuffer could be in recordCallback, leaving plenty of spare room.

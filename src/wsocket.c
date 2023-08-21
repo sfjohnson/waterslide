@@ -72,6 +72,9 @@ static void *recvLoop (void *arg) {
     socklen_t recvAddrLen = sizeof(recvAddr);
     ssize_t recvLen = recvfrom(sock->sock, recvBuf, sizeof(recvBuf), 0, (struct sockaddr*)&recvAddr, &recvAddrLen);
 
+    // DEBUG: I think we should do here: sock->peerPort = recvAddr.sin_port
+    //        otherwise port-restricted cone NAT might not work properly
+
     // If recv failed, ignore it but wait a bit first
     // TODO: implement closing this socket and re-opening it on a timer
     if (recvLen < 0 || recvAddrLen != sizeof(recvAddr)) {

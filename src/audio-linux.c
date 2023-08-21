@@ -30,11 +30,7 @@ static void dmaBufWrite (uint8_t *dmaBuf, unsigned int frameCount) {
 
   memset(dmaBuf, 0, bytesPerSample * deviceChannelCount * frameCount);
 
-  if (globals_get1ui(statsCh1Audio, codecRingActive)) {
-    globals_add1i(statsCh1Audio, receiverSync, -frameCount);
-    // DEBUG: test
-    // eventrecorder_event1i(0, -frameCount);
-  }
+  syncer_onAudio(frameCount);
 
   if (ringUnderrun) {
     // Let the ring fill up to about half-way before pulling from it again, while outputting silence.
@@ -78,9 +74,9 @@ static void dmaBufRead (const uint8_t *dmaBuf, unsigned int frameCount) {
   switch (audioEncoding) {
     case AUDIO_ENCODING_OPUS:
       if (bytesPerSample == 4) {
-        syncer_enqueueBufS32((int32_t *)dmaBuf, frameCount, deviceChannelCount, true, -1);
+        syncer_enqueueBufS32((int32_t *)dmaBuf, frameCount, deviceChannelCount, true);
       } else { // bytesPerSample == 2
-        syncer_enqueueBufS16((int16_t *)dmaBuf, frameCount, deviceChannelCount, true, -1);
+        syncer_enqueueBufS16((int16_t *)dmaBuf, frameCount, deviceChannelCount, true);
       }
       break;
 
@@ -116,13 +112,13 @@ static inline void setAudioLoopStatus (int status) {
 }
 
 static void *startAudioLoop (UNUSED void *arg) {
-  unsigned int cardId, deviceId, periodSize, periodCount, deviceSampleRate, networkSampleRate;
-
+  unsigned int cardId, deviceId, periodSize, periodCount, networkSampleRate;
+  double deviceSampleRate;
+  globals_get1ff(audio, deviceSampleRate, &deviceSampleRate);
   cardId = globals_get1i(audio, cardId);
   deviceId = globals_get1i(audio, deviceId);
   periodSize = globals_get1i(audio, periodSize);
   periodCount = globals_get1i(audio, periodCount);
-  deviceSampleRate = globals_get1i(audio, deviceSampleRate);
   networkSampleRate = globals_get1i(audio, networkSampleRate);
 
   enum pcm_format format;
@@ -138,7 +134,7 @@ static void *startAudioLoop (UNUSED void *arg) {
 
   struct pcm_config config = {
     .channels = deviceChannelCount,
-    .rate = deviceSampleRate,
+    .rate = (int)deviceSampleRate,
     .format = format,
     .period_size = periodSize,
     .period_count = periodCount,
@@ -152,7 +148,7 @@ static void *startAudioLoop (UNUSED void *arg) {
   printf("Device channels: %u\n", deviceChannelCount);
   printf("%s channels: %d\n", _receiver ? "Receiver" : "Sender", networkChannelCount);
   printf("Device latency (ms): %f\n", 1000.0 * audio_getDeviceLatency());
-  printf("Device sample rate: %u\n", deviceSampleRate);
+  printf("Device sample rate: %f\n", deviceSampleRate);
 
   unsigned int dmaBufLen = periodSize * periodCount;
   int err = 0;
@@ -253,6 +249,7 @@ static void *startAudioLoop (UNUSED void *arg) {
     }
 
     if (lastHwPos != 0 && hwPos - lastHwPos > periodSize * periodCount / 2) {
+      // DEBUG: will this throw off receiverSync?
       globals_add1ui(statsCh1Audio, audioLoopXrunCount, 1);
     }
     lastHwPos = hwPos;
@@ -284,7 +281,9 @@ int audio_init (bool receiver) {
 double audio_getDeviceLatency (void) {
   int periodSize = globals_get1i(audio, periodSize);
   int periodCount = globals_get1i(audio, periodCount);
-  return (periodSize * periodCount / 2) / (double)globals_get1i(audio, deviceSampleRate);
+  double deviceSampleRate;
+  globals_get1ff(audio, deviceSampleRate, &deviceSampleRate);
+  return (double)(periodSize * periodCount / 2) / deviceSampleRate;
 }
 
 int audio_start (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, unsigned int fullRingSize) {
