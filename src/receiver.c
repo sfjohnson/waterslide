@@ -29,15 +29,9 @@ static bool slipEsc = false;
 // returns: number of audio frames added to decodeRing (after resampling), or negative error code
 static int decodePacket (const uint8_t *buf, int len) {
   static bool overrun = false;
-  static bool firstPacket = true;
 
-  // DEBUG: hack to prevent large seqDiff value and opus codec error
-  if (firstPacket) {
-    firstPacket = false;
-    return 0;
-  }
+  if (len != encodedPacketSize) return -1;
 
-  if (len < 2) return -1;
   int seq = utils_readU16LE(buf);
   buf += 2;
   len -= 2;
@@ -149,7 +143,6 @@ static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
 static void onBlockCh1 (const uint8_t *buf, int sbn) {
   static struct timespec tsp;
   static int sbnLast = -1;
-  bool tryDecode = true;
 
   clock_gettime(CLOCK_MONOTONIC_RAW, &tsp); // NOTE: CLOCK_MONOTONIC has been observed to jump backwards on macOS https://discussions.apple.com/thread/253778121
   // us will be between 0 and 999_999_999 and will roll back to zero every 1000 seconds
@@ -160,44 +153,40 @@ static void onBlockCh1 (const uint8_t *buf, int sbn) {
   // NOTE: blockTimingRingPos must only be written to here
   globals_set1ui(statsCh1, blockTimingRingPos, ringPos);
 
+  int result = 0;
+
   if (sbnLast != -1) {
-    int sbnDiff;
-    if (sbnLast - sbn > 128) {
-      // Overflow
-      sbnDiff = 256 - sbnLast + sbn;
-    } else {
-      sbnDiff = sbn - sbnLast;
+    int sbnDiff = sbn - sbnLast;
+    // Overflow
+    if (sbnDiff < -128) {
+      sbnDiff += 256;
+    } else if (sbnDiff > 128) {
+      sbnDiff -= 256;
     }
 
     if (sbnDiff == 0) {
-      // duplicate block, don't decode
+      // duplicate block, don't decode, don't reset state
       globals_add1ui(statsCh1, dupBlockCount, 1);
-      tryDecode = false;
     } else if (sbnDiff < 0) {
-      // out-of-order old block, don't decode
+      // out-of-order old block, don't decode, don't reset state
       globals_add1ui(statsCh1, oooBlockCount, 1);
-      tryDecode = false;
     } else if (sbnDiff > 1) {
-      int blockDroppedCount = sbnDiff - 1;
-      // out-of-order, previous block(s) were dropped, reset state and decode
-      globals_add1ui(statsCh1, oooBlockCount, blockDroppedCount);
-      audioEncodedBufPos = 0;
-      slipEsc = false;
+      // out-of-order, sbnDiff - 1 previous block(s) were dropped, decode and reset state 
+      globals_add1ui(statsCh1, oooBlockCount, sbnDiff - 1);
+      slipDecodeBlock(buf, channel1.symbolsPerBlock * channel1.symbolLen);
+      result = -1;
+    } else { // sbnDiff == 1
+      result = slipDecodeBlock(buf, channel1.symbolsPerBlock * channel1.symbolLen);
     }
   }
   sbnLast = sbn;
-
-  // Don't bother SLIP decoding duplicate or out-of-order old blocks
-  if (!tryDecode) return;
-
-  int result = slipDecodeBlock(buf, channel1.symbolsPerBlock * channel1.symbolLen);
 
   if (result >= 0) {
     // NOTE: here result is the total number of frames that were enqueued to decodeRing while decoding this block
   } else if (result == -4) {
     // decodePacket error
   } else {
-    // SLIP error
+    // SLIP error or ooo block
     audioEncodedBufPos = 0;
     slipEsc = false;
   }
