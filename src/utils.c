@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include "boringtun/wireguard_ffi.h"
 #include "globals.h"
+#include "audio.h"
 #include "utils.h"
 
 static double levelFastAttack = 0.0, levelFastRelease = 0.0, levelSlowAttack = 0.0, levelSlowRelease = 0.0;
@@ -110,8 +111,8 @@ void utils_usleep (unsigned int us) {
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-#if defined(__linux__) || defined(__ANDROID__)
 int utils_setCallerThreadRealtime (int priority, int core) {
+#if defined(__linux__) || defined(__ANDROID__)
   // Pin to CPU core
   cpu_set_t cpuSet;
   CPU_ZERO(&cpuSet);
@@ -125,34 +126,41 @@ int utils_setCallerThreadRealtime (int priority, int core) {
   if (sched_setscheduler(0, SCHED_FIFO, &sp) < 0) return -2;
 
   return 0;
-}
-#endif
 
-// DEBUG: review this code, see https://user.cockos.com/~deadbeef/index.php?article=854
-#if defined(__APPLE__)
-int utils_setCallerThreadPrioHigh (void) {
-  
-  // https://stackoverflow.com/a/44310370
+#elif defined(__APPLE__)
+  // Some light reading
+  // - https://user.cockos.com/~deadbeef/index.php?article=854
+  // - https://stackoverflow.com/a/44310370
+  // - https://gist.github.com/cjappl/20fed4c5631099989af9ca900db68bfa
+  // NOTE: 
+  // - audio_init() must be called first
+  // - priority and core are ignored for macOS
+
+  double deviceLatency = audio_getDeviceLatency();
+  if (deviceLatency == 0.0) return -1;
+
   mach_timebase_info_data_t timebase;
   kern_return_t kr = mach_timebase_info(&timebase);
-  if (kr != KERN_SUCCESS) return -1;
+  if (kr != KERN_SUCCESS) return -2;
 
   // Set the thread priority.
   struct thread_time_constraint_policy ttcpolicy;
   thread_port_t threadport = pthread_mach_thread_np(pthread_self());
 
   // In ticks. Therefore to convert nanoseconds to ticks multiply by (timebase.denom / timebase.numer).
-  ttcpolicy.period = 500 * 1000 * timebase.denom / timebase.numer; // Period over which we demand scheduling.
-  ttcpolicy.computation = 100 * 1000 * timebase.denom / timebase.numer; // Minimum time in a period where we must be running.
-  ttcpolicy.constraint = 100 * 1000 * timebase.denom / timebase.numer; // Maximum time between start and end of our computation in the period.
-  ttcpolicy.preemptible = FALSE;
+  ttcpolicy.period = 1000000000.0 * deviceLatency * timebase.denom / timebase.numer; // Period over which we demand scheduling.
+  ttcpolicy.computation = 500000000.0 * deviceLatency * timebase.denom / timebase.numer; // Minimum time in a period where we must be running.
+  ttcpolicy.constraint = 1000000000.0 * deviceLatency * timebase.denom / timebase.numer; // Maximum time between start and end of our computation in the period.
+  ttcpolicy.preemptible = 1;
 
   kr = thread_policy_set(threadport, THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&ttcpolicy, THREAD_TIME_CONSTRAINT_POLICY_COUNT);
-  if (kr != KERN_SUCCESS) return -2;
+  if (kr != KERN_SUCCESS) return -3;
+
+  // TODO: join workgroup
 
   return 0;
-}
 #endif
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////

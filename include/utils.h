@@ -26,11 +26,7 @@ void utils_ringDeinit (ck_ring_t *ring, ck_ring_buffer_t *ringBuf);
 // NOTE: us must be < 1000000 (1 second)
 void utils_usleep (unsigned int us);
 
-#if defined(__linux__) || defined(__ANDROID__)
 int utils_setCallerThreadRealtime (int priority, int core);
-#elif defined(__APPLE__)
-int utils_setCallerThreadPrioHigh (void);
-#endif
 
 // int utils_bindSocketToIf (int socket, const char *ifName, int ifLen, int port);
 

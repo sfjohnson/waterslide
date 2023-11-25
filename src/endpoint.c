@@ -50,11 +50,7 @@ static void *tickLoop (UNUSED void *arg) {
 
   // Calling wireguard_tick locks tunnel which onPeerPacket and endpoint_send contend,
   // and their work is more important, so bump this thread up to prevent priority inversion.
-  #if defined(__linux__) || defined(__ANDROID__)
   utils_setCallerThreadRealtime(98, 0);
-  #elif defined(__APPLE__)
-  utils_setCallerThreadPrioHigh();
-  #endif
 
   while (tunnel != NULL) {
     // for (int i = 0; i < endpointCount; i++) {

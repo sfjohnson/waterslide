@@ -54,11 +54,7 @@ static void *recvLoop (void *arg) {
   wsocket_t *sock = (wsocket_t *)arg;
 
   // For receiver: all the audio and FEC decoding happens on these threads (one thread per endpoint).
-  #if defined(__linux__) || defined(__ANDROID__)
   utils_setCallerThreadRealtime(98, 0);
-  #elif defined(__APPLE__)
-  utils_setCallerThreadPrioHigh();
-  #endif
 
   struct pollfd pfd = { 0 };
   pfd.fd = sock->sock;

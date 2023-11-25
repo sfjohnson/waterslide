@@ -102,17 +102,10 @@ static void *startEncodeLoop (UNUSED void *arg) {
   loopSleep.tv_nsec = targetSizeNs;
   loopSleep.tv_sec = 0;
 
-  #if defined(__linux__) || defined(__ANDROID__)
   if (utils_setCallerThreadRealtime(98, 0) < 0) {
     setEncodeLoopStatus(-3);
     return NULL;
   }
-  #elif defined(__APPLE__)
-  if (utils_setCallerThreadPrioHigh() < 0) {
-    setEncodeLoopStatus(-3);
-    return NULL;
-  }
-  #endif
 
   // successfully initialised, tell the main thread
   setEncodeLoopStatus(1);
@@ -216,12 +209,12 @@ int sender_init (void) {
     return -4;
   }
 
-  // NOTE: endpoint_init will block until network discovery is completed
-  int err = endpoint_init(NULL);
-  if (err < 0) return err - 4;
-
-  err = audio_init(false);
+  int err = audio_init(false);
   if (err < 0) return err - 21;
+
+  // NOTE: endpoint_init will block until network discovery is completed
+  err = endpoint_init(NULL);
+  if (err < 0) return err - 4;
 
   double deviceLatency = audio_getDeviceLatency();
 
