@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include <string.h>
 #include "globals.h"
 #include "utils.h"
@@ -80,6 +85,7 @@ int syncer_init (double srcRate, double dstRate, int maxInBufFrames, ck_ring_t *
   }
 
   if (_syncer_initResampState(srcRate, dstRate, maxInBufFrames) < 0) return -1;
+  if (_syncer_initReceiverSync(srcRate) < 0) return -1;
   return 0;
 }
 
@@ -106,4 +112,5 @@ void syncer_deinit (void) {
   delete[] inBufsDouble;
 
   _syncer_deinitResampState();
+  _syncer_deinitReceiverSync();
 }

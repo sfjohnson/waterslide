@@ -1,3 +1,10 @@
+<!--
+  Copyright 2023 Sam Johnson
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 <script>
   import AudioMeter from './AudioMeter.svelte'
   import StreamMeter from './StreamMeter.svelte'
@@ -44,8 +51,8 @@
         <div class="value">{data.audioLoopXrunCount}</div>
       </div>
       <div class="entry">
-        <div class="label">receiver sync:</div>
-        <div class="value">{Math.round(data.receiverSync)}</div>
+        <div class="label">clock error:</div>
+        <div class="value">{typeof data.clockError === 'number' ? `${Math.round(data.clockError)} ppm` : '-'}</div>
       </div>
     </div>
   </div>

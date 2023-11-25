@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,7 +13,7 @@
 #include "utils.h"
 #include "opus/opus_multistream.h"
 #include "globals.h"
-#include "endpoint-secure.h"
+#include "endpoint.h"
 #include "mux.h"
 #include "raptorq/raptorq.h"
 #include "pcm.h"
@@ -23,7 +28,7 @@ static int targetEncodeRingSize, encodeRingMaxSize;
 static int audioFrameSize;
 static int encodedPacketSize;
 static double networkSampleRate; // Hz
-static xsem_t encodeLoopInitSem;
+static xsem_t encodeLoopInitSem; // TODO: convert to atomic_wait
 static atomic_int encodeLoopStatus = 0;
 
 static int initOpusEncoder (OpusMSEncoder **encoder) {
@@ -169,7 +174,7 @@ static void *startEncodeLoop (UNUSED void *arg) {
 
       mux_resetTransfer(&transfer);
       mux_setChannel(&transfer, 1, sourceSymbolsPerBlock + repairSymbolsPerBlock, 4 + symbolLen, fecEncodedBuf);
-      mux_emitPackets(&transfer, endpointsec_send);
+      mux_emitPackets(&transfer, endpoint_send);
     }
   }
 
@@ -211,8 +216,8 @@ int sender_init (void) {
     return -4;
   }
 
-  // NOTE: endpointsec_init will block until network discovery is completed
-  int err = endpointsec_init(NULL);
+  // NOTE: endpoint_init will block until network discovery is completed
+  int err = endpoint_init(NULL);
   if (err < 0) return err - 4;
 
   err = audio_init(false);
@@ -246,6 +251,7 @@ int sender_init (void) {
   if (err < 0) return err - 31;
 
   pthread_t encodeLoopThread;
+  // TODO: convert to C++20 atomic_wait so we can delete xsem.h
   if (xsem_init(&encodeLoopInitSem, 0) < 0) return -35;
   if (pthread_create(&encodeLoopThread, NULL, startEncodeLoop, NULL) != 0) return -36;
 

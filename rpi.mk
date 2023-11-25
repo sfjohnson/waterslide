@@ -1,3 +1,8 @@
+# Copyright 2023 Sam Johnson
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 ERROR_MESSAGE := This Makefile can be run on x86_64 Linux only
 
 CC = $(TOOLCHAIN)/bin/arm-rpi-linux-gnueabihf-gcc
@@ -8,7 +13,7 @@ PROTOCFLAGS = --cpp_out=.
 CFLAGS = --sysroot=$(TOOLCHAIN)/arm-rpi-linux-gnueabihf/sysroot -D_POSIX_C_SOURCE=200809L -std=c17 -O3 -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
 # DEBUG: put -pedantic back
 # CPPFLAGS = --sysroot=$(TOOLCHAIN)/arm-rpi-linux-gnueabihf/sysroot -std=c++17 -O3 -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
-CPPFLAGS = --sysroot=$(TOOLCHAIN)/arm-rpi-linux-gnueabihf/sysroot -std=c++17 -O3 -fstrict-aliasing -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
+CPPFLAGS = --sysroot=$(TOOLCHAIN)/arm-rpi-linux-gnueabihf/sysroot -std=c++20 -O3 -fstrict-aliasing -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
 ORIGIN=$ORIGIN
 O=$$O
 LDFLAGS = -Llib/rpi -pthread
@@ -16,8 +21,8 @@ LIBS = -lstdc++ -ldl -lm -lopus -luwebsockets -lraptorq -lck -lr8brain -lprotobu
 
 TARGET = waterslide-rpi
 PROTOBUFS = init-config.proto monitor.proto
-SRCSC = main.c audio-linux.c sender.c receiver.c globals.c utils.c slip.c mux.c demux.c endpoint-secure.c pcm.c wsocket.c event-recorder.c
-SRCSCPP = syncer/enqueue.cpp syncer/resamp-state.cpp syncer/receiver-sync.cpp config.cpp monitor-udp.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
+SRCSC = main.c audio-linux.c sender.c receiver.c globals.c utils.c slip.c mux.c demux.c endpoint.c pcm.c wsocket.c event-recorder.c
+SRCSCPP = syncer/enqueue.cpp syncer/resamp-state.cpp syncer/receiver-sync.cpp config.cpp monitor.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
 OBJS = $(subst .c,.o,$(addprefix src/,$(SRCSC))) $(subst .cpp,.o,$(addprefix src/,$(SRCSCPP)))
 
 .PHONY: exit setup

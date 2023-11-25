@@ -39,5 +39,7 @@ include/deps/
 licenses/
 monitor/dist/
 frontend/out/
+frontend/monitor/
 src/protobufs/
 include/protobufs/
+monitor-udp-server/include/deps/

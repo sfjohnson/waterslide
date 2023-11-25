@@ -1,6 +1,10 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include <stdio.h>
 #include <atomic>
-#include "xsem.h"
 // TODO: fix anonymous structs in r8brain
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
@@ -14,6 +18,7 @@ using namespace r8b;
 enum ResampStateEnum { RunningA, FeedingB, MixingAtoB, RunningB, FeedingA, MixingBtoA, StoppingManager };
 
 static std::atomic<ResampStateEnum> resampState = RunningA;
+static std::atomic_flag managerFlag = ATOMIC_FLAG_INIT; // false
 static int feedSampleCount = 0;
 static double abMix = 0.0; // 0.0 means all FROM, 1.0 means all TO, changes at SYNCER_SWITCH_SPEED
 static int abMixOverflowLen = 0;
@@ -24,7 +29,6 @@ static double resampsARatio, resampsBRatio;
 static int _maxInBufFrames;
 static double _srcRate, _dstRate;
 static pthread_t resampManagerThread;
-static xsem_t resampManagerSem; // post this when resamp manager has work to do
 static int networkChannelCount, deviceChannelCount;
 static double **tempBufsDouble;
 
@@ -35,7 +39,8 @@ static double **tempBufsDouble;
 // CDSPResampler24 construction and destruction can be expensive so it's done in this lower priority thread to not cause an audio glitch
 static void *startResampManager (UNUSED void *arg) {
   while (true) {
-    xsem_wait(&resampManagerSem);
+    managerFlag.wait(false);
+    managerFlag.clear();
 
     switch (resampState) {
       case StoppingManager:
@@ -104,7 +109,6 @@ int _syncer_initResampState (double srcRate, double dstRate, int maxInBufFrames)
       abMixOverflowBufs[i] = new double[SYNCER_AB_MIX_OVERFLOW_MAX_FRAMES];
     }
 
-    xsem_init(&resampManagerSem, 0);
     pthread_create(&resampManagerThread, NULL, startResampManager, NULL);
   } catch (...) {
     return -1;
@@ -307,9 +311,9 @@ int _syncer_stepResampState (double **samples, int frameCount, bool setStats, in
 
 void _syncer_deinitResampState (void) {
   resampState = StoppingManager;
-  xsem_post(&resampManagerSem);
+  managerFlag.test_and_set();
+  managerFlag.notify_one();
   pthread_join(resampManagerThread, NULL);
-  xsem_destroy(&resampManagerSem);
 
   for (int i = 0; i < networkChannelCount; i++) {
     delete[] abMixOverflowBufs[i];
@@ -348,6 +352,7 @@ int syncer_changeRate (double srcRate) {
   if (resampState != RunningA && resampState != RunningB) return -1; // currently switching
 
   _srcRate = srcRate;
-  xsem_post(&resampManagerSem);
+  managerFlag.test_and_set();
+  managerFlag.notify_one();
   return 0;
 }

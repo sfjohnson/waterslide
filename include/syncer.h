@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #ifndef _SYNCER_H
 #define _SYNCER_H
 
@@ -13,9 +18,11 @@ extern "C" {
 /////////////////////
 
 int _syncer_initResampState (double srcRate, double dstRate, int maxInBufFrames);
+int _syncer_initReceiverSync (double srcRate);
 int _syncer_enqueueSamples (double **samples, int frameCount, bool setStats);
 int _syncer_stepResampState (double **samples, int frameCount, bool setStats, int offset);
 void _syncer_deinitResampState (void);
+void _syncer_deinitReceiverSync (void);
 
 /////////////////////
 // public

@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -32,7 +37,7 @@ int eventrecorder_event1i (int32_t id, int32_t val) {
   if (!running) return -1;
 
   struct timespec tsp;
-  if (clock_gettime(CLOCK_MONOTONIC, &tsp) != 0) return -2;
+  if (clock_gettime(CLOCK_MONOTONIC_RAW, &tsp) != 0) return -2;
 
   // Atomically increments eventBufPos and saves the non-incremented value locally.
   // If we get preemted immediately after this operation the two threads won't have

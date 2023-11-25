@@ -15,7 +15,7 @@ Realtime audio transport with multihoming.
 - [x] Multihoming
 - [x] Lossless audio
 - [x] Multi-channel audio
-- [ ] Resampling to correct for clock drift between sender and receiver
+- [x] Resampling to correct for clock drift between sender and receiver
 - [x] Encryption
 - [x] Network discovery
 - [ ] Video or other data besides audio

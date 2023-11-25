@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Copyright 2023 Sam Johnson
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 USERNAME=sfjohnson
 
 rm -rf lib/macos-arm64 lib/macos11 lib/android30 lib/rpi include/deps

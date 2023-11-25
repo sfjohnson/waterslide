@@ -1,3 +1,8 @@
+# Copyright 2023 Sam Johnson
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 ifeq ($(shell uname -m), arm64)
   ARCH = macos-arm64
 else
@@ -14,13 +19,13 @@ PROTOCFLAGS = --cpp_out=.
 # CFLAGS = -g3 -fno-omit-frame-pointer -fsanitize=address
 # LIBS = -g3 -fno-omit-frame-pointer -fsanitize=address
 CFLAGS = -std=c17 -O3 -flto -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I$(OPENSSL_PATH)/include
-CPPFLAGS = -std=c++17 -O3 -flto -fstrict-aliasing -Wno-gnu-anonymous-struct -Wno-nested-anon-types -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I$(OPENSSL_PATH)/include
+CPPFLAGS = -std=c++20 -O3 -flto -fstrict-aliasing -Wno-gnu-anonymous-struct -Wno-nested-anon-types -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I$(OPENSSL_PATH)/include
 LDFLAGS = -Llib/$(ARCH) -L$(OPENSSL_PATH)/lib -pthread -flto
 LIBS = -lstdc++ -lm -lz -lopus -lportaudio -lr8brain -lraptorq -lck -lssl -lcrypto -luwebsockets -lprotobuf-lite -lboringtun -framework CoreAudio -framework AudioUnit -framework AudioToolbox -framework CoreServices -framework Security
 
 TARGET = waterslide-$(ARCH)
 PROTOBUFS = init-config.proto monitor.proto
-SRCSC = main.c sender.c receiver.c globals.c utils.c slip.c mux.c demux.c endpoint-secure.c audio-macos.c pcm.c wsocket.c event-recorder.c
+SRCSC = main.c sender.c receiver.c globals.c utils.c slip.c mux.c demux.c endpoint.c audio-macos.c pcm.c wsocket.c event-recorder.c
 SRCSCPP = syncer/enqueue.cpp syncer/resamp-state.cpp syncer/receiver-sync.cpp config.cpp monitor.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
 OBJS = $(subst .c,.o,$(addprefix src/,$(SRCSC))) $(subst .cpp,.o,$(addprefix src/,$(SRCSCPP)))
 

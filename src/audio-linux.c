@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include <stdio.h>
 #include <math.h>
 #include <stdint.h>
@@ -20,12 +25,12 @@ static unsigned int _fullRingSize;
 static bool _receiver;
 static unsigned int bytesPerSample, networkChannelCount, deviceChannelCount, audioEncoding;
 static pthread_t audioLoopThread;
-static xsem_t audioLoopInitSem;
+static xsem_t audioLoopInitSem;  // TODO: convert to atomic_wait
 static atomic_int audioLoopStatus = 0;
 
 // This is on the RT thread for receiver
 static void dmaBufWrite (uint8_t *dmaBuf, unsigned int frameCount) {
-  static bool ringUnderrun = false;
+  static bool ringUnderrun = true; // let ring fill to half before we start dequeuing
   unsigned int ringCurrentSize = utils_ringSize(_ring);
 
   memset(dmaBuf, 0, bytesPerSample * deviceChannelCount * frameCount);
@@ -40,6 +45,8 @@ static void dmaBufWrite (uint8_t *dmaBuf, unsigned int frameCount) {
       ringUnderrun = false;
     }
   }
+
+  globals_add1uiv(statsCh1Audio, streamMeterBins, (STATS_STREAM_METER_BINS-1) * ringCurrentSize / _fullRingSize, 1);
 
   // Don't ever let the ring empty completely, that way the channels stay in order
   if (ringCurrentSize < networkChannelCount * frameCount) {
@@ -219,7 +226,7 @@ static void *startAudioLoop (UNUSED void *arg) {
   loopSleep.tv_nsec = 1000 * globals_get1i(audio, loopSleep);
   loopSleep.tv_sec = 0;
 
-  unsigned int hwPos = 0, lastHwPos = 0;
+  unsigned int hwPos = 0, lastHwPos = 0; // NOTE: overflow at approx. 25 hours at 48 kHz on 32-bit arch
   bool lastBufHalf = false;
 
   // Wait a bit, otherwise pcm_mmap_get_hw_ptr will error out due to the timestamp being 0
@@ -249,7 +256,7 @@ static void *startAudioLoop (UNUSED void *arg) {
     }
 
     if (lastHwPos != 0 && hwPos - lastHwPos > periodSize * periodCount / 2) {
-      // DEBUG: will this throw off receiverSync?
+      // DEBUG: will this throw off receiver sync?
       globals_add1ui(statsCh1Audio, audioLoopXrunCount, 1);
     }
     lastHwPos = hwPos;
@@ -291,6 +298,7 @@ int audio_start (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, unsigned int fullRi
   _ringBuf = ringBuf;
   _fullRingSize = fullRingSize;
 
+  // TODO: convert to C++20 atomic_wait so we can delete xsem.h
   if (xsem_init(&audioLoopInitSem, 0) < 0) return -1;
   if (pthread_create(&audioLoopThread, NULL, startAudioLoop, NULL) != 0) return -2;
 

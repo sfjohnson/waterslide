@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include <stdio.h>
 #include <math.h>
 #include "portaudio/portaudio.h"
@@ -23,7 +28,7 @@ static double deviceLatency = 0.0;
 
 // This is the high-priority audio thread for receiver
 static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, UNUSED const PaStreamCallbackTimeInfo* timeInfo, UNUSED PaStreamCallbackFlags statusFlags, UNUSED void *userData) {
-  static bool underrun = true;
+  static bool ringUnderrun = true; // let ring fill to half before we start dequeuing
   float *outBufFloat = (float *)outputBuffer;
   int ringCurrentSize = utils_ringSize(_ring);
   // This condition is ensured in audio_init: outBufFloatCount >= ringFloatCount
@@ -35,18 +40,20 @@ static int playCallback (UNUSED const void *inputBuffer, void *outputBuffer, uns
 
   syncer_onAudio(framesPerBuffer);
 
-  if (underrun) {
+  if (ringUnderrun) {
     // Let the ring fill up to about half-way before pulling from it again, while outputting silence.
     if (ringCurrentSize < _fullRingSize / 2) {
       return paContinue;
     } else {
-      underrun = false;
+      ringUnderrun = false;
     }
   }
 
+  globals_add1uiv(statsCh1Audio, streamMeterBins, (STATS_STREAM_METER_BINS-1) * ringCurrentSize / _fullRingSize, 1);
+
   // Don't ever let the ring empty completely, that way the channels stay in order
   if (ringCurrentSize < ringFloatCount) {
-    underrun = true;
+    ringUnderrun = true;
     globals_add1ui(statsCh1Audio, bufferUnderrunCount, 1);
     return paContinue;
   }

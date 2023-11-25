@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -6,7 +11,7 @@
 #include "opus/opus_multistream.h"
 #include "globals.h"
 #include "demux.h"
-#include "endpoint-secure.h"
+#include "endpoint.h"
 #include "syncer.h"
 #include "audio.h"
 #include "utils.h"
@@ -40,8 +45,6 @@ static int decodePacket (const uint8_t *buf, int len) {
   syncer_onPacket(seq, audioFrameSize);
 
   int ringCurrentSize = utils_ringSize(&decodeRing);
-  globals_add1uiv(statsCh1Audio, streamMeterBins, STATS_STREAM_METER_BINS * ringCurrentSize / decodeRingMaxSize, 1);
-
   const uint8_t *pcmSamples;
   int result;
 
@@ -252,12 +255,12 @@ int receiver_init (void) {
   err = audio_init(true);
   if (err < 0) return err - 5;
 
-  // Start audio before endpointsec so that we don't call audio_enqueueBuf before audio module has called syncer_init
+  // Start audio before endpoint so that we don't call audio_enqueueBuf before audio module has called syncer_init
   err = audio_start(&decodeRing, decodeRingBuf, decodeRingMaxSize);
   if (err < 0) return err - 14;
 
-  // NOTE: endpointsec_init will block until network discovery is completed
-  err = endpointsec_init(demux_readPacket);
+  // NOTE: endpoint_init will block until network discovery is completed
+  err = endpoint_init(demux_readPacket);
   if (err < 0) return err - 18;
 
   return 0;

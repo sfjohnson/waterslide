@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <pthread.h>
@@ -51,12 +56,16 @@ static void *startWsApp (UNUSED void *arg) {
 // map an array of bins (unsigned ints) to an array of uint8 values that can be displayed in a heatmap graph
 static void mapStreamMeterBins (unsigned int *rawBins, uint8_t *mappedBins) {
   unsigned int minBinVal = 0, maxBinVal = 0;
+  bool first = true;
   for (int i = 0; i < STATS_STREAM_METER_BINS; i++) {
     // save streamMeterBins so it doesn't change while we are doing the mapping
     rawBins[i] = globals_get1uiv(statsCh1Audio, streamMeterBins, i);
-    if (i == 0) {
+    if (rawBins[i] == 0) continue;
+
+    if (first) {
+      first = false;
       minBinVal = maxBinVal = rawBins[i];
-    } else if (rawBins[i] < minBinVal && rawBins[i] > 0) {
+    } else if (rawBins[i] < minBinVal) {
       minBinVal = rawBins[i];
     } else if (rawBins[i] > maxBinVal) {
       maxBinVal = rawBins[i];
@@ -151,9 +160,9 @@ static void *statsLoop (UNUSED void *arg) {
     protoCh1->mutable_audiostats()->set_bufferunderruncount(globals_get1ui(statsCh1Audio, bufferUnderrunCount));
     protoCh1->mutable_audiostats()->set_encodethreadjittercount(globals_get1ui(statsCh1Audio, encodeThreadJitterCount));
     protoCh1->mutable_audiostats()->set_audioloopxruncount(globals_get1ui(statsCh1Audio, audioLoopXrunCount));
-    double receiverSyncFilt;
-    globals_get1ff(statsCh1Audio, receiverSyncFilt, &receiverSyncFilt);
-    protoCh1->mutable_audiostats()->set_receiversync(receiverSyncFilt);
+    double clockError;
+    globals_get1ff(statsCh1Audio, clockError, &clockError);
+    protoCh1->mutable_audiostats()->set_clockerror(clockError);
 
     mapStreamMeterBins(streamMeterBinsRaw, streamMeterBinsMapped);
     protoCh1->mutable_audiostats()->set_streammeterbins(streamMeterBinsMapped, STATS_STREAM_METER_BINS);

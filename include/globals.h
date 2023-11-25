@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #ifndef _GLOBALS_H
 #define _GLOBALS_H
 
@@ -27,14 +32,28 @@
 #define SYNCER_AB_MIX_OVERFLOW_MAX_FRAMES 64
 // In percent. For example: for 44100 Hz and 8% the transition frequency is (1 - 8/100) * (44100 / 2) = 20286 Hz
 #define SYNCER_TRANSITION_BAND 8.0
+
+// In seconds. Store a sample of receiverSync in rsHistory every x seconds (with interleaving to reduce the effects of packet loss).
+#define RS_SAMPLE_INTERVAL 5
+// In RS_SAMPLE_INTERVAL units, 720 = 1 hour. If rsHistory is full, pop the oldest sample off the queue.
+#define RS_HISTORY_LENGTH 720
+// In RS_SAMPLE_INTERVAL units. Look back this far to decide if error measurement is stable enough to do a rate change. It will take at least this amount of time for a rate change to happen.
+#define RS_ERROR_VARIANCE_WINDOW 40
+// The variance over RS_ERROR_VARIANCE_WINDOW must be less than this in order for a rate change to happen.
+#define RS_ERROR_VARIANCE_TARGET 0.0001
+// In samples per second. The absolute value of the error must be higher than this in order for a rate change to happen.
+#define RS_ERROR_THRESHOLD 0.15
+
 #define MAX_ENDPOINTS 16
 #define MAX_DEVICE_NAME_LEN 100
 #define MAX_NET_IF_NAME_LEN 20
 #define MAX_AUDIO_CHANNELS 64
+
 #define SEC_KEY_LENGTH 44 // Length of base 64 encoded key string in chars, not including null terminator.
 #define SEC_KEEP_ALIVE_INTERVAL 1 // in seconds
 #define ENDPOINT_TICK_INTERVAL 100000 // in microseconds
 #define ENDPOINT_REOPEN_INTERVAL 20 // in ticks (1 tick = 100 ms)
+
 #define STATS_STREAM_METER_BINS 512
 #define STATS_BLOCK_TIMING_RING_LEN 512
 
@@ -102,7 +121,7 @@ globals_declare1ui(statsCh1Audio, bufferOverrunCount)
 globals_declare1ui(statsCh1Audio, bufferUnderrunCount)
 globals_declare1ui(statsCh1Audio, encodeThreadJitterCount)
 globals_declare1ui(statsCh1Audio, audioLoopXrunCount)
-globals_declare1ff(statsCh1Audio, receiverSyncFilt)
+globals_declare1ff(statsCh1Audio, clockError) // In PPM
 globals_declare1ui(statsCh1AudioOpus, codecErrorCount)
 globals_declare1ui(statsCh1AudioPCM, crcFailCount)
 

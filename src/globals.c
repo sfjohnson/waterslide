@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include "globals.h"
 
 globals_define1i(root, mode)
@@ -64,6 +69,6 @@ globals_define1ui(statsCh1Audio, bufferOverrunCount)
 globals_define1ui(statsCh1Audio, bufferUnderrunCount)
 globals_define1ui(statsCh1Audio, encodeThreadJitterCount)
 globals_define1ui(statsCh1Audio, audioLoopXrunCount)
-globals_define1ff(statsCh1Audio, receiverSyncFilt)
+globals_define1ff(statsCh1Audio, clockError)
 globals_define1ui(statsCh1AudioOpus, codecErrorCount)
 globals_define1ui(statsCh1AudioPCM, crcFailCount)

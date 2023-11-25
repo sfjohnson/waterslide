@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <pthread.h>
@@ -10,7 +15,7 @@
 #include "globals.h"
 #include "utils.h"
 #include "wsocket.h"
-#include "endpoint-secure.h"
+#include "endpoint.h"
 
 #define WG_READ_BUF_LEN 1500
 
@@ -43,7 +48,7 @@ static void *tickLoop (UNUSED void *arg) {
   uint8_t tickBuf[1500] = { 0 };
   struct wireguard_result result;
 
-  // Calling wireguard_tick locks tunnel which onPeerPacket and endpointsec_send contend,
+  // Calling wireguard_tick locks tunnel which onPeerPacket and endpoint_send contend,
   // and their work is more important, so bump this thread up to prevent priority inversion.
   #if defined(__linux__) || defined(__ANDROID__)
   utils_setCallerThreadRealtime(98, 0);
@@ -137,7 +142,7 @@ static void *startDiscovery (void *arg) {
   return NULL;
 }
 
-int endpointsec_init (int (*onPacket)(const uint8_t*, int, int)) {
+int endpoint_init (int (*onPacket)(const uint8_t*, int, int)) {
   endpointCount = globals_get1i(endpoints, endpointCount);
   if (endpointCount == 0) {
     printf("Endpoint: No endpoints specified!\n");
@@ -200,7 +205,7 @@ int endpointsec_init (int (*onPacket)(const uint8_t*, int, int)) {
 }
 
 // NOTE: this function is not thread safe due to srcBuf and dstBuf being static.
-int endpointsec_send (const uint8_t *buf, int bufLen) {
+int endpoint_send (const uint8_t *buf, int bufLen) {
   if (tunnel == NULL || !tunnelUp) return -1;
 
   // This buffer starts with a fake IPv4 header that passes BoringTun's packet checks.
@@ -226,7 +231,7 @@ int endpointsec_send (const uint8_t *buf, int bufLen) {
   return 0;
 }
 
-void endpointsec_deinit (void) {
+void endpoint_deinit (void) {
   tunnelUp = false;
   if (tunnel != NULL) tunnel_free(tunnel);
 

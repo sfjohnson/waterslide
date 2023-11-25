@@ -1,3 +1,8 @@
+// Copyright 2023 Sam Johnson
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +12,10 @@
 #include "globals.h"
 #include "demux.h"
 #include "raptorq/raptorq.h"
+
+// DEBUG: test
+// #include <stdio.h>
+// #include <unistd.h>
 
 static demux_channel_t *channels;
 static int chCount = 0;
@@ -32,6 +41,57 @@ int demux_addChannel (demux_channel_t *channel) {
   return ++chCount;
 }
 
+static void decodeChunk (const uint8_t *chunkBuf, int sbn, demux_channel_t *chan) {
+  // DEBUG: throttling experiment
+
+  // statics must only be accessed inside channel lock
+  // static struct timespec tsp;
+  // static int usTimeLast = -1;
+  // static int dropBlockCount = 0;
+
+  // Any network receive thread can call this function to add a chunk to any channel, so a lock is needed
+  // TODO: remove this lock once a single-threaded network loop using poll() is implemented
+  pthread_mutex_lock(&chan->_lock);
+
+  int result = raptorq_decodePacket(chunkBuf, 4 + chan->symbolLen, chan->_blockBuf, chan->symbolsPerBlock);
+  if (result == chan->symbolsPerBlock * chan->symbolLen) {
+    // clock_gettime(CLOCK_MONOTONIC_RAW, &tsp);
+    // // us will be between 0 and 999_999_999 and will roll back to zero every 1000 seconds
+    // int usTimeBefore = 1000000 * (tsp.tv_sec % 1000) + (tsp.tv_nsec / 1000);
+
+    // if (dropBlockCount > 0) {
+    //   dropBlockCount--;
+    // } else {
+      chan->onBlock(chan->_blockBuf, sbn);
+    // }
+
+    // clock_gettime(CLOCK_MONOTONIC_RAW, &tsp);
+    // // us will be between 0 and 999_999_999 and will roll back to zero every 1000 seconds
+    // int usTimeAfter = 1000000 * (tsp.tv_sec % 1000) + (tsp.tv_nsec / 1000);
+
+    // if (usTimeLast != -1) {
+    //   int intervalTime = usTimeAfter - usTimeLast;
+    //   if (intervalTime < 0) intervalTime += 1000000000; // overflow
+    //   int workTime = usTimeAfter - usTimeBefore;
+    //   if (workTime < 0) workTime += 1000000000; // overflow
+
+    //   // DEBUG: log
+    //   globals_set1ff(statsCh1Audio, receiverSyncFilt, workTime / (double)intervalTime);
+
+    //   if (intervalTime != 0 && workTime / (double)intervalTime > 0.7) {
+    //     // dropBlockCount += 10;
+    //     printf("throttling!\n"); // DEBUG: printf is not ok here
+    //     sleep(2);
+    //   }
+    // }
+
+    // usTimeLast = usTimeAfter;
+  }
+
+  pthread_mutex_unlock(&chan->_lock);
+}
+
+// NOTE: this is called by realtime priority network threads
 int demux_readPacket (const uint8_t *buf, int bufLen, int endpointIndex) {
   if (bufLen > maxPacketSize) return -1;
   if (bufLen < 3) return -2;
@@ -59,13 +119,7 @@ int demux_readPacket (const uint8_t *buf, int bufLen, int endpointIndex) {
       }
       if (chan->chId == chId) {
         if (chunkLen != 4 + chan->symbolLen) return -8;
-        // Any network receive thread can call this function to add a chunk to any channel, so a lock is needed
-        pthread_mutex_lock(&chan->_lock);
-        int result = raptorq_decodePacket(&buf[pos], chunkLen, chan->_blockBuf, chan->symbolsPerBlock);
-        if (result == chan->symbolsPerBlock * chan->symbolLen) {
-          chan->onBlock(chan->_blockBuf, sbn);
-        }
-        pthread_mutex_unlock(&chan->_lock);
+        decodeChunk(&buf[pos], sbn, chan);
         break;
       }
     }
