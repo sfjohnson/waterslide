@@ -62,9 +62,9 @@ download linux   v2.1.2       tinyalsa         libtinyalsa
 download macos   v19.7.5      portaudio        libportaudio
 download all     v6.2.4       r8brain-free-src libr8brain
 download all     v1.4.15      opus             libopus
-download all     v1.8.1       raptorq          libraptorq
+download all     v1.8.2       raptorq          libraptorq
 download all     v19.7.30     uWebSockets      libuwebsockets
-download all     v0.5.10      boringtun        libboringtun
+download all     v0.7.0       boringtun        libboringtun
 
 echo "Fixing protobuf include path..."
 mkdir -p include/deps/google

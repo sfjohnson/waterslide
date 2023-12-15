@@ -26,7 +26,6 @@ typedef struct {
   int symbolsPerBlock, symbolLen;
   void (*onBlock)(const uint8_t *, int);
   // private
-  pthread_mutex_t _lock;
   uint8_t *_blockBuf;
 } demux_channel_t;
 

@@ -33,9 +33,8 @@ int demux_init (void) {
 int demux_addChannel (demux_channel_t *channel) {
   if (chCount == maxChannels) return -1;
 
-  if (pthread_mutex_init(&channel->_lock, NULL) != 0) return -2;
   channel->_blockBuf = (uint8_t *)malloc(channel->symbolsPerBlock * channel->symbolLen);
-  if (channel->_blockBuf == NULL) return -3;
+  if (channel->_blockBuf == NULL) return -2;
 
   memcpy(&channels[chCount], channel, sizeof(demux_channel_t));
   return ++chCount;
@@ -48,10 +47,6 @@ static void decodeChunk (const uint8_t *chunkBuf, int sbn, demux_channel_t *chan
   // static struct timespec tsp;
   // static int usTimeLast = -1;
   // static int dropBlockCount = 0;
-
-  // Any network receive thread can call this function to add a chunk to any channel, so a lock is needed
-  // TODO: remove this lock once a single-threaded network loop using poll() is implemented
-  pthread_mutex_lock(&chan->_lock);
 
   int result = raptorq_decodePacket(chunkBuf, 4 + chan->symbolLen, chan->_blockBuf, chan->symbolsPerBlock);
   if (result == chan->symbolsPerBlock * chan->symbolLen) {
@@ -87,11 +82,9 @@ static void decodeChunk (const uint8_t *chunkBuf, int sbn, demux_channel_t *chan
 
     // usTimeLast = usTimeAfter;
   }
-
-  pthread_mutex_unlock(&chan->_lock);
 }
 
-// NOTE: this is called by realtime priority network threads
+// NOTE: this is called by one realtime priority network thread
 int demux_readPacket (const uint8_t *buf, int bufLen, int endpointIndex) {
   if (bufLen > maxPacketSize) return -1;
   if (bufLen < 3) return -2;

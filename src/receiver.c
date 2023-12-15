@@ -142,14 +142,10 @@ static int slipDecodeBlock (const uint8_t *buf, int bufLen) {
   return result;
 }
 
-// The channel lock in the demux module protects the static variables accessed here
 static void onBlockCh1 (const uint8_t *buf, int sbn) {
-  static struct timespec tsp;
   static int sbnLast = -1;
+  int us = utils_getCurrentUTime();
 
-  clock_gettime(CLOCK_MONOTONIC_RAW, &tsp); // NOTE: CLOCK_MONOTONIC has been observed to jump backwards on macOS https://discussions.apple.com/thread/253778121
-  // us will be between 0 and 999_999_999 and will roll back to zero every 1000 seconds
-  int us = 1000000 * (tsp.tv_sec % 1000) + (tsp.tv_nsec / 1000);
   unsigned int ringPos = globals_get1ui(statsCh1, blockTimingRingPos);
   globals_set1uiv(statsCh1, blockTimingRing, ringPos, (unsigned int)us);
   if (++ringPos == STATS_BLOCK_TIMING_RING_LEN) ringPos = 0;

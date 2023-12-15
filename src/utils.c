@@ -108,10 +108,23 @@ void utils_usleep (unsigned int us) {
   #endif
 }
 
+int utils_getCurrentUTime (void) {
+  struct timespec tsp = { 0 };
+  // NOTE: CLOCK_MONOTONIC has been observed to jump backwards on macOS https://discussions.apple.com/thread/253778121
+  clock_gettime(CLOCK_MONOTONIC_RAW, &tsp);
+  return 1000000 * (tsp.tv_sec % 1000) + (tsp.tv_nsec / 1000);
+}
+
+int utils_getElapsedUTime (int lastUTime) {
+  int intervalUTime = utils_getCurrentUTime() - lastUTime;
+  // handle overflow
+  return intervalUTime < 0 ? intervalUTime + 1000000000 : intervalUTime;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-int utils_setCallerThreadRealtime (int priority, int core) {
+int utils_setCallerThreadRealtime (UNUSED int priority, UNUSED int core) {
 #if defined(__linux__) || defined(__ANDROID__)
   // Pin to CPU core
   cpu_set_t cpuSet;
@@ -317,6 +330,10 @@ inline double utils_s32ToDouble (const int32_t *inBuf, int index) {
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+
+inline int utils_randBetween (int min, int max) {
+  return min + rand() % (max - min);
+}
 
 // NOTE: this function is undefined for x = 0 or x = 1
 inline int utils_roundUpPowerOfTwo (unsigned int x) {

@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <netinet/in.h>
 #include <stdlib.h>
-#include <pthread.h>
 #include <stdbool.h>
 #include <stdatomic.h>
 #include <stdint.h>
@@ -30,18 +29,41 @@
 #define SERVER_BIND_PORT 26172
 #define MAX_PEERS 1000
 #define MAX_ENDPOINTS 5
-#define PEER_EXPIRY_TIME 30 // seconds
+#define PEER_EXPIRY_TIME 4000000 // microseconds
 #define RECV_LOOP_IDLE_INTERVAL 1 // second
 
 typedef struct {
   uint8_t myPubKey[32];
   struct sockaddr_in myAddrs[MAX_ENDPOINTS];
-  time_t lastUpdatedTime;
+  int lastUpdatedUTime;
 } peer_t;
 
 static peer_t peerList[MAX_PEERS] = { 0 };
 static atomic_int serverSock = -1;
-static atomic_long currentTime = -1;
+
+void utils_usleep (unsigned int us) {
+  #if defined(__linux__) || defined(__ANDROID__)
+  struct timespec tsp;
+  tsp.tv_nsec = 1000 * us;
+  tsp.tv_sec = 0;
+  clock_nanosleep(CLOCK_MONOTONIC, 0, &tsp, NULL);
+  #else
+  usleep(us);
+  #endif
+}
+
+int utils_getCurrentUTime (void) {
+  struct timespec tsp = { 0 };
+  // NOTE: CLOCK_MONOTONIC has been observed to jump backwards on macOS https://discussions.apple.com/thread/253778121
+  clock_gettime(CLOCK_MONOTONIC_RAW, &tsp);
+  return 1000000 * (tsp.tv_sec % 1000) + (tsp.tv_nsec / 1000);
+}
+
+int utils_getElapsedUTime (int lastUTime) {
+  int intervalUTime = utils_getCurrentUTime() - lastUTime;
+  // handle overflow
+  return intervalUTime < 0 ? intervalUTime + 1000000000 : intervalUTime;
+}
 
 static bool pubKeyMatch (const uint8_t *key1, const uint8_t *key2) {
   for (int i = 0; i < 32; i++) {
@@ -66,13 +88,13 @@ static void sendRes (const struct sockaddr_in *yourAddr, const struct sockaddr_i
 }
 
 static void removePeerIfExpired (peer_t *peer) {
-  if (currentTime - peer->lastUpdatedTime >= PEER_EXPIRY_TIME) {
+  if (utils_getElapsedUTime(peer->lastUpdatedUTime) >= PEER_EXPIRY_TIME) {
     // Zero out everything for a bit more safety.
     memset(peer->myPubKey, 0, 32);
     for (int j = 0; j < MAX_ENDPOINTS; j++) {
       memset(&peer->myAddrs[j], 0, sizeof(struct sockaddr_in));
     }
-    peer->lastUpdatedTime = -1;
+    peer->lastUpdatedUTime = -1;
   }
 }
 
@@ -91,7 +113,7 @@ static void handleReq (const uint8_t *buf, ssize_t bufLen, const struct sockaddr
   for (int i = 0; i < MAX_PEERS; i++) {
     peer_t *peer = &peerList[i];
 
-    if (peer->lastUpdatedTime == -1) {
+    if (peer->lastUpdatedUTime == -1) {
       insertIndex = i;
       continue;
     }
@@ -99,7 +121,7 @@ static void handleReq (const uint8_t *buf, ssize_t bufLen, const struct sockaddr
     if (pubKeyMatch(myPubKey, peer->myPubKey)) {
       // myPubKey is already in the peerList, update its address and port
       memcpy(&peer->myAddrs[endpointIndex], addr, sizeof(struct sockaddr_in));
-      peer->lastUpdatedTime = currentTime;
+      peer->lastUpdatedUTime = utils_getCurrentUTime();
       entryUpdated = true;
     }
 
@@ -117,45 +139,14 @@ static void handleReq (const uint8_t *buf, ssize_t bufLen, const struct sockaddr
     // Insert a new entry for myPubKey
     memcpy(peerList[insertIndex].myPubKey, myPubKey, 32);
     memcpy(&peerList[insertIndex].myAddrs[endpointIndex], addr, sizeof(struct sockaddr_in));
-    peerList[insertIndex].lastUpdatedTime = currentTime;
+    peerList[insertIndex].lastUpdatedUTime = utils_getCurrentUTime();
   }
-}
-
-static void *recvLoop (void *arg) {
-  uint8_t recvBuf[1500] = { 0 };
-  struct sockaddr_in recvAddr = { 0 };
-
-  for (int i = 0; i < MAX_PEERS; i++) {
-    peerList[i].lastUpdatedTime = -1;
-  }
-
-  while (currentTime == -1) usleep(10000);
-
-  while (true) {
-    socklen_t recvAddrLen = sizeof(recvAddr);
-    ssize_t recvLen = recvfrom(serverSock, recvBuf, sizeof(recvBuf), 0, (struct sockaddr*)&recvAddr, &recvAddrLen);
-
-    if (recvLen < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-      // Timeout reached, do periodic cleanup
-      for (int i = 0; i < MAX_PEERS; i++) {
-        if (peerList[i].lastUpdatedTime != -1) removePeerIfExpired(&peerList[i]);
-      }
-      continue;
-    }
-
-    // If recv failed, ignore it but wait a bit first
-    if (recvLen < 0 || recvAddrLen != sizeof(recvAddr)) {
-      usleep(10000);
-      continue;
-    }
-
-    handleReq(recvBuf, recvLen, &recvAddr);
-  }
-
-  return NULL;
 }
 
 int main (void) {
+  static uint8_t recvBuf[1500] = { 0 };
+  static struct sockaddr_in recvAddr = { 0 };
+
   printf("Waterslide discovery server, build 3\n");
 
   serverSock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -182,22 +173,27 @@ int main (void) {
 
   printf("Bound to port %d\n", SERVER_BIND_PORT);
 
-  pthread_t recvThread;
-  if (pthread_create(&recvThread, NULL, recvLoop, NULL) != 0) {
-    printf("pthread_create() failed.\n");
-    return EXIT_FAILURE;
-  }
+  for (int i = 0; i < MAX_PEERS; i++) peerList[i].lastUpdatedUTime = -1;
 
-  struct timespec tp;
   while (true) {
-    usleep(500000);
+    socklen_t recvAddrLen = sizeof(recvAddr);
+    ssize_t recvLen = recvfrom(serverSock, recvBuf, sizeof(recvBuf), 0, (struct sockaddr*)&recvAddr, &recvAddrLen);
 
-    if (clock_gettime(CLOCK_MONOTONIC, &tp) != 0) {
-      printf("clock_gettime() failed.\n");
+    if (recvLen < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      // Timeout reached, do periodic cleanup
+      for (int i = 0; i < MAX_PEERS; i++) {
+        if (peerList[i].lastUpdatedUTime != -1) removePeerIfExpired(&peerList[i]);
+      }
       continue;
     }
 
-    currentTime = tp.tv_sec;
+    // If recv failed, ignore it but wait a bit first
+    if (recvLen < 0 || recvAddrLen != sizeof(recvAddr)) {
+      utils_usleep(10000);
+      continue;
+    }
+
+    handleReq(recvBuf, recvLen, &recvAddr);
   }
 
   return EXIT_SUCCESS;

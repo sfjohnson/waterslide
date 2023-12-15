@@ -25,10 +25,12 @@ void utils_ringDeinit (ck_ring_t *ring, ck_ring_buffer_t *ringBuf);
 
 // NOTE: us must be < 1000000 (1 second)
 void utils_usleep (unsigned int us);
+// return value is between 0 and 999_999_999 and will roll back to zero every 1000 seconds
+int utils_getCurrentUTime (void);
+// return value is in microseconds, intervals of > 500_000_000 us may return an incorrect value
+int utils_getElapsedUTime (int lastUTime);
 
 int utils_setCallerThreadRealtime (int priority, int core);
-
-// int utils_bindSocketToIf (int socket, const char *ifName, int ifLen, int port);
 
 // NOTE: There is no length check, outBuf must be large enough!
 int utils_slipEncode (const uint8_t *inBuf, int inBufLen, uint8_t *outBuf);
@@ -49,6 +51,10 @@ double utils_s16ToDouble (const int16_t *inBuf, int index);
 // 24-bit index, i.e. 1 unit in index equals 3 bytes in inBuf
 double utils_s24ToDouble (const uint8_t *inBuf, int index);
 double utils_s32ToDouble (const int32_t *inBuf, int index);
+
+// min is inclusive, max is not inclusive
+// call srand() first
+int utils_randBetween (int min, int max);
 
 // NOTE: this function is undefined for x = 0 or x = 1
 int utils_roundUpPowerOfTwo (unsigned int x);

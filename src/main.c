@@ -16,6 +16,7 @@
 #include "receiver.h"
 #include "monitor.h"
 #include "audio.h"
+#include "utils.h"
 
 static bool archChecks (void) {
   // We are going to use macros to test for pointer size, so make sure they are consistent with our runtime test.
@@ -35,7 +36,7 @@ int main (int argc, char *argv[]) {
   // Disable full buffering when executed outside of a terminal (e.g. NodeJS spawn)
   setbuf(stdout, NULL);
 
-  printf("Waterslide, build 81\n");
+  printf("Waterslide, build 82\n");
 
   if (argc < 2) {
     printf("First argument must be base64 encoded init config.\n");
@@ -46,6 +47,8 @@ int main (int argc, char *argv[]) {
     printf("Architecture and compiler checks failed. The following were expected: lock-free 64-bit atomic integers, 64-bit double-precision floats, 32 or 64-bit pointers, and arithmetic right shift for negative numbers.\n");
     return EXIT_FAILURE;
   }
+
+  srand(utils_getCurrentUTime());
 
   int err = 0;
   if ((err = config_init(argv[1])) < 0) {
