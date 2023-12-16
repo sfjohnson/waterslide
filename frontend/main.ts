@@ -64,6 +64,10 @@ const startWaterslide = (b64Config: string): void => {
     case 'android-arm64':
       binPath += '-android30'
       break
+    
+    case 'linux-x64':
+      binPath += '-linux-x64'
+      break
   
     default:
       console.log(`Unsupported platform: ${platformAndArch}`)

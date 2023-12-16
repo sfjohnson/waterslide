@@ -11,7 +11,7 @@
   import BlocksSection from './BlocksSection.svelte'
   import EndpointsSection from './EndpointsSection.svelte'
 
-  const wsServerAddr = 'ws://localhost:7681'
+  const wsServerAddr = `ws://${window.location.hostname}:7681`
 
   let currentState = {}
 

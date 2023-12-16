@@ -20,6 +20,11 @@
 #include "utils.h"
 #include "endpoint.h"
 
+// DEBUG: I can't find SO_BINDTODEVICE anywhere, if you know what's going on plz tell me
+#if defined(__linux__)
+#define SO_BINDTODEVICE	25
+#endif
+
 #define WG_READ_BUF_LEN 1500
 
 static endpoint_t *endpoints = NULL;

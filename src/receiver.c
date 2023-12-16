@@ -253,11 +253,11 @@ int receiver_init (void) {
 
   // Start audio before endpoint so that we don't call audio_enqueueBuf before audio module has called syncer_init
   err = audio_start(&decodeRing, decodeRingBuf, decodeRingMaxSize);
-  if (err < 0) return err - 14;
+  if (err < 0) return err - 100;
 
   // NOTE: endpoint_init will block until network discovery is completed
   err = endpoint_init(demux_readPacket);
-  if (err < 0) return err - 18;
+  if (err < 0) return err - 200;
 
   return 0;
 }
