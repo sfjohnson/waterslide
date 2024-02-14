@@ -22,8 +22,7 @@ message InitConfigProto {
   }
 
   message Mux {
-    int32 maxChannels = 1;
-    int32 maxPacketSize = 2;
+    uint32 maxPacketSize = 1;
   }
 
   message Opus { // networkSampleRate is always 48000

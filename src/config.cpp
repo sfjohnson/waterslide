@@ -237,8 +237,7 @@ int config_init (const char *b64ConfigStr) {
 
   globals_set1i(endpoints, endpointCount, endpointCount);
 
-  globals_set1i(mux, maxChannels, initConfig.mux().maxchannels());
-  globals_set1i(mux, maxPacketSize, initConfig.mux().maxpacketsize());
+  globals_set1ui(mux, maxPacketSize, initConfig.mux().maxpacketsize());
 
   globals_set1i(audio, networkChannelCount, networkChannelCount);
   globals_set1ff(audio, deviceSampleRate, initConfig.audio().devicesamplerate());
@@ -284,9 +283,15 @@ int config_init (const char *b64ConfigStr) {
     }
   }
 
-  globals_set1i(fec, symbolLen, initConfig.fec().symbollen());
-  globals_set1i(fec, sourceSymbolsPerBlock, initConfig.fec().sourcesymbolsperblock());
-  globals_set1i(fec, repairSymbolsPerBlock, initConfig.fec().repairsymbolsperblock());
+  // DEBUG: info channel test
+  globals_set1iv(fec, symbolLen, 0, 64);
+  globals_set1iv(fec, sourceSymbolsPerBlock, 0, 1);
+  globals_set1iv(fec, repairSymbolsPerBlock, 0, 1);
+
+  // TODO
+  globals_set1iv(fec, symbolLen, 1, initConfig.fec().symbollen());
+  globals_set1iv(fec, sourceSymbolsPerBlock, 1, initConfig.fec().sourcesymbolsperblock());
+  globals_set1iv(fec, repairSymbolsPerBlock, 1, initConfig.fec().repairsymbolsperblock());
 
   globals_set1i(monitor, wsPort, initConfig.monitor().wsport());
   globals_set1i(monitor, udpPort, initConfig.monitor().udpport());

@@ -133,6 +133,8 @@ void _syncer_deinitReceiverSync (void) {
 // public
 /////////////////////
 
+// DEBUG: handle temporary network loss better
+
 // NOTE:
 // - not thread-safe, call from one thread only
 // - this is a realtime thread

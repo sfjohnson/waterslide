@@ -16,7 +16,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
   else
     ARCH=macos11
   fi
-  mkdir -p bin lib/$ARCH lib/android30 lib/rpi licenses
+  mkdir -p bin lib/$ARCH lib/android30 lib/rpi lib/linux-x64 licenses
 elif [[ "$OSTYPE" == "linux-gnu"* && $(uname -m) == 'x86_64' ]]; then
   ARCH=linux
   mkdir -p bin lib/android30 lib/rpi lib/linux-x64 licenses
@@ -63,9 +63,9 @@ download linux   v2.1.3       tinyalsa         libtinyalsa
 download macos   v19.7.5      portaudio        libportaudio
 download all     v6.5.0       r8brain-free-src libr8brain
 download all     v1.4.16      opus             libopus
-download all     v1.8.4       raptorq          libraptorq
+download all     v1.9.1       raptorq          libraptorq
 download all     v19.7.33     uWebSockets      libuwebsockets
-download all     v0.7.1       boringtun        libboringtun
+download all     v0.7.2       boringtun        libboringtun
 
 echo "Fixing protobuf include path..."
 mkdir -p include/deps/google

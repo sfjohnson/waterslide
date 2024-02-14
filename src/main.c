@@ -19,6 +19,8 @@
 #include "utils.h"
 
 static bool archChecks (void) {
+  // TODO: ensure little-endian
+
   // We are going to use macros to test for pointer size, so make sure they are consistent with our runtime test.
   #if defined(W_32_BIT_POINTERS)
     if (sizeof(intptr_t) != 4) return false;

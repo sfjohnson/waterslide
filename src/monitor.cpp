@@ -88,11 +88,12 @@ static void mapStreamMeterBins (unsigned int *rawBins, uint8_t *mappedBins) {
 }
 
 // map a ring buffer to a flat buffer, excluding the element at the write head
-static void mapBlockTimingRing (uint8_t *dest) {
-  unsigned int ringPos = globals_get1ui(statsCh1, blockTimingRingPos);
+static void mapBlockTimingRing (uint8_t *dest, uint8_t chId) {
+  unsigned int ringPos = globals_get1uiv(statsDemux, blockTimingRingPos, chId);
   if (++ringPos == STATS_BLOCK_TIMING_RING_LEN) ringPos = 0;
   for (int i = 0; i < STATS_BLOCK_TIMING_RING_LEN - 1; i++) {
-    unsigned int val = globals_get1uiv(statsCh1, blockTimingRing, ringPos);
+    unsigned int ringIndex = chId * STATS_BLOCK_TIMING_RING_LEN + ringPos;
+    unsigned int val = globals_get1uiv(statsDemux, blockTimingRing, ringIndex);
     memcpy(&dest[4*i], &val, 4);
     if (++ringPos == STATS_BLOCK_TIMING_RING_LEN) ringPos = 0;
   }
@@ -139,14 +140,17 @@ static void *statsLoop (UNUSED void *arg) {
       protoAudioChannels[i]->set_levelslow(levelSlow);
     }
 
-    protoCh1->set_dupblockcount(globals_get1ui(statsCh1, dupBlockCount));
-    protoCh1->set_oooblockcount(globals_get1ui(statsCh1, oooBlockCount));
-    mapBlockTimingRing(blockTimingRingMapped);
+    // TODO: other channels
+    uint8_t chId = 1;
+
+    protoCh1->set_dupblockcount(globals_get1uiv(statsDemux, dupBlockCount, chId));
+    protoCh1->set_oooblockcount(globals_get1uiv(statsDemux, oooBlockCount, chId));
+    mapBlockTimingRing(blockTimingRingMapped, chId);
     protoCh1->set_blocktiming(blockTimingRingMapped, 4 * (STATS_BLOCK_TIMING_RING_LEN-1));
 
-    int lastSbn0 = globals_get1iv(statsCh1Endpoints, lastSbn, 0);
+    int lastSbn0 = globals_get1iv(statsEndpoints, lastSbn, chId * MAX_ENDPOINTS);
     for (int i = 0; i < endpointCount; i++) {
-      int relSbn = globals_get1iv(statsCh1Endpoints, lastSbn, i) - lastSbn0;
+      int relSbn = globals_get1iv(statsEndpoints, lastSbn, chId * MAX_ENDPOINTS + i) - lastSbn0;
       if (relSbn > 127) relSbn -= 256;
       if (relSbn < -128) relSbn += 256;
       protoEndpoints[i]->set_lastrelativesbn(relSbn);

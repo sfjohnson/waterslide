@@ -7,5 +7,6 @@
 #define _RECEIVER_H
 
 int receiver_init (void);
+void receiver_deinit (void);
 
 #endif

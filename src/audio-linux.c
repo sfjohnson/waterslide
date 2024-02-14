@@ -3,6 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#include "xwait.h"
 #include <stdio.h>
 #include <math.h>
 #include <stdint.h>
@@ -11,11 +12,9 @@
 #include <stdatomic.h>
 #include <time.h>
 #include <semaphore.h>
-#include <unistd.h>
 #include "tinyalsa/pcm.h"
 #include "globals.h"
 #include "utils.h"
-#include "xsem.h"
 #include "syncer.h"
 #include "audio.h"
 
@@ -25,7 +24,7 @@ static unsigned int _fullRingSize;
 static bool _receiver;
 static unsigned int bytesPerSample, networkChannelCount, deviceChannelCount, audioEncoding;
 static pthread_t audioLoopThread;
-static xsem_t audioLoopInitSem;  // TODO: convert to atomic_wait
+static xwait_t audioLoopInitWait;
 static atomic_int audioLoopStatus = 0;
 
 // This is on the RT thread for receiver
@@ -115,7 +114,7 @@ static void dmaBufRead (const uint8_t *dmaBuf, unsigned int frameCount) {
 
 static inline void setAudioLoopStatus (int status) {
   audioLoopStatus = status;
-  xsem_post(&audioLoopInitSem);
+  xwait_notify(&audioLoopInitWait);
 }
 
 static void *startAudioLoop (UNUSED void *arg) {
@@ -226,7 +225,7 @@ static void *startAudioLoop (UNUSED void *arg) {
   loopSleep.tv_nsec = 1000 * globals_get1i(audio, loopSleep);
   loopSleep.tv_sec = 0;
 
-  unsigned int hwPos = 0, lastHwPos = 0; // NOTE: overflow at approx. 25 hours at 48 kHz on 32-bit arch
+  unsigned int hwPos = 0, lastHwPos = 0; // DEBUG: overflow at approx. 25 hours at 48 kHz on 32-bit arch
   bool lastBufHalf = false;
 
   // Wait a bit, otherwise pcm_mmap_get_hw_ptr will error out due to the timestamp being 0
@@ -237,7 +236,7 @@ static void *startAudioLoop (UNUSED void *arg) {
   while (audioLoopStatus == 1) {
     if (pcm_mmap_get_hw_ptr(pcm, &hwPos, &tsp) < 0) {
       pcm_close(pcm);
-      audioLoopStatus = -10; // don't xsem_post in the loop, the other thread is not waiting anymore
+      audioLoopStatus = -10; // don't xwait_notify in the loop, the other thread is not waiting anymore
       return NULL;
     }
 
@@ -298,16 +297,15 @@ int audio_start (ck_ring_t *ring, ck_ring_buffer_t *ringBuf, unsigned int fullRi
   _ringBuf = ringBuf;
   _fullRingSize = fullRingSize;
 
-  // TODO: convert to C++20 atomic_wait so we can delete xsem.h
-  if (xsem_init(&audioLoopInitSem, 0) < 0) return -1;
+  xwait_init(&audioLoopInitWait);
   if (pthread_create(&audioLoopThread, NULL, startAudioLoop, NULL) != 0) return -2;
 
   // Wait for audioLoop to initialise
-  xsem_wait(&audioLoopInitSem);
+  xwait_wait(&audioLoopInitWait);
   if (audioLoopStatus < 0) {
     if (pthread_join(audioLoopThread, NULL) != 0) return -3;
-    if (xsem_destroy(&audioLoopInitSem) != 0) return -4;
-    return audioLoopStatus - 4;
+    xwait_destroy(&audioLoopInitWait);
+    return audioLoopStatus - 3;
   }
 
   return 0;
@@ -318,7 +316,7 @@ int audio_deinit (void) {
     if (audioLoopStatus < 0) return audioLoopStatus; // audioLoopThread has already errored out
     audioLoopStatus = 0;
     pthread_join(audioLoopThread, NULL);
-    xsem_destroy(&audioLoopInitSem);
+    xwait_destroy(&audioLoopInitWait);
   }
 
   return 0;

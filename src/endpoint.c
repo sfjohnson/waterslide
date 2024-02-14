@@ -34,7 +34,7 @@ static uint8_t myPubKey[32], peerPubKey[32];
 static struct wireguard_tunnel *tunnel = NULL;
 static atomic_bool tunnelUp = false;
 static atomic_bool threadsRunning = true;
-static int (*_onPacket)(const uint8_t*, int, int) = NULL;
+static int (*_onPacket)(const uint8_t*, size_t, int) = NULL;
 
 /////////////////////
 // private
@@ -212,18 +212,18 @@ static void handleRes (int epIndex, uint8_t *buf, ssize_t len) {
 /////////////////////
 
 // NOTE: this function is not thread safe due to srcBuf and dstBuf being static.
-int endpoint_send (const uint8_t *buf, int bufLen) {
+int endpoint_send (const uint8_t *buf, size_t bufLen) {
   if (!tunnelUp) return -1;
 
   // This buffer starts with a fake IPv4 header that passes BoringTun's packet checks.
   // TODO: remove this check from the Rust code
   static uint8_t srcBuf[1500] = { 0x45, 0x00, 0x00, 0x00 };
-  static const int maxSrcDataLen = sizeof(srcBuf) - 20;
+  static const size_t maxSrcDataLen = sizeof(srcBuf) - 20;
   static uint8_t dstBuf[1500] = { 0 };
 
   if (bufLen > maxSrcDataLen) return -2;
 
-  int srcBufLen = bufLen + 20;
+  size_t srcBufLen = bufLen + 20;
   // Set length field in the fake header as it is checked by BoringTun.
   srcBuf[2] = srcBufLen >> 8;
   srcBuf[3] = srcBufLen & 0xff;
@@ -283,12 +283,13 @@ static void *dataLoop (UNUSED void *arg) {
   struct pollfd pfds[endpointCount];
   int lastTickUTime = utils_getCurrentUTime();
 
-  // Dividing by 2 means the max possible time between handleTick calls will be 
-  // 1.5 * ENDPOINT_TICK_INTERVAL_US instead of 2 * ENDPOINT_TICK_INTERVAL_US.
+  // dividing by 2 means the max possible time between handleTick calls will be 
+  // 1.5 * ENDPOINT_TICK_INTERVAL_US instead of 2 * ENDPOINT_TICK_INTERVAL_US
   int tickTimeoutUs = ENDPOINT_TICK_INTERVAL_US / 2;
   int tickTimeoutMs = tickTimeoutUs / 1000;
 
-  // For receiver: all the audio and FEC decoding happens on this thread.
+  // this thread is relatively lightweight; demux will pass all the heavy decoding
+  // to other thread(s)
   utils_setCallerThreadRealtime(98, 0);
 
   while (threadsRunning) {
@@ -374,7 +375,7 @@ static void *dataLoop (UNUSED void *arg) {
 // init, deinit
 /////////////////////
 
-int endpoint_init (int (*onPacket)(const uint8_t*, int, int)) {
+int endpoint_init (int (*onPacket)(const uint8_t*, size_t, int)) {
   endpointCount = globals_get1i(endpoints, endpointCount);
   if (endpointCount == 0) {
     printf("Endpoint: No endpoints specified!\n");

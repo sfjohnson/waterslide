@@ -6,7 +6,6 @@
 #ifndef _DEMUX_H
 #define _DEMUX_H
 
-#include <pthread.h>
 #include <stdint.h>
 
 // Definitions:
@@ -20,17 +19,14 @@
 // chId: channel ID.
 // channel: a stream of data, error corrected indepentenly from the other channels.
 
-typedef struct {
-  uint64_t chId;
-  // symbolLen must be: 64, 128, 256, 512 or 1024
-  int symbolsPerBlock, symbolLen;
-  void (*onBlock)(const uint8_t *, int);
-  // private
-  uint8_t *_blockBuf;
-} demux_channel_t;
+void demux_deinit (void);
 
-int demux_init (void);
-int demux_addChannel (demux_channel_t *channel);
-int demux_readPacket (const uint8_t *buf, int bufLen, int endpointIndex);
+// each time demux_addChannel is called a new thread is created, so each onData is called from a different thread
+// symbolLen must be: 64, 128, 256, 512 or 1024
+// additional channels may be added after calling demux_readPacket
+int demux_addChannel (int maxDataLen, int sourceSymbolsPerBlock, int repairSymbolsPerBlock, int symbolLen, void (*onData)(const uint8_t *, int));
+
+// call demux_readPacket from one thread only (RT network thread); the data is passed to other threads for decoding
+int demux_readPacket (const uint8_t *buf, size_t bufLen, int endpointIndex);
 
 #endif

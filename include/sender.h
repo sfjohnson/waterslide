@@ -7,5 +7,6 @@
 #define _SENDER_H
 
 int sender_init (void);
+void sender_deinit (void);
 
 #endif

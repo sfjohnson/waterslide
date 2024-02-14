@@ -49,6 +49,9 @@
 #define MAX_NET_IF_NAME_LEN 20
 #define MAX_AUDIO_CHANNELS 64
 
+// channel 0: config, channel 1: audio, channel 2: video
+#define MUX_CHANNEL_COUNT 3
+
 #define SEC_KEY_LENGTH 44 // Length of base 64 encoded key string in chars, not including null terminator.
 #define ENDPOINT_KEEP_ALIVE_MS 600 // in milliseconds
 #define ENDPOINT_TICK_INTERVAL_US 100000 // in microseconds
@@ -69,8 +72,7 @@ globals_declare1i(discovery, serverPort)
 globals_declare1i(endpoints, endpointCount)
 globals_declare1sv(endpoints, interface)
 
-globals_declare1i(mux, maxChannels)
-globals_declare1i(mux, maxPacketSize)
+globals_declare1ui(mux, maxPacketSize)
 
 globals_declare1i(audio, networkChannelCount) // Number of audio channels sent and received over network. Must be <= deviceChannelCount
 globals_declare1i(audio, deviceChannelCount) // Number of audio channels supported by device (soundcard). Pulled from driver for macOS and pulled from config for Linux.
@@ -97,9 +99,9 @@ globals_declare1i(opus, frameSize) // Normally 240 samples = 5 ms @ 48 kHz
 globals_declare1i(pcm, frameSize) // In samples. Packet size in bytes is 3 * channelCount * frameSize + 2
 globals_declare1i(pcm, sampleRate)
 
-globals_declare1i(fec, symbolLen)
-globals_declare1i(fec, sourceSymbolsPerBlock)
-globals_declare1i(fec, repairSymbolsPerBlock)
+globals_declare1iv(fec, symbolLen)
+globals_declare1iv(fec, sourceSymbolsPerBlock)
+globals_declare1iv(fec, repairSymbolsPerBlock)
 
 globals_declare1i(monitor, udpPort)
 globals_declare1ui(monitor, udpAddr)
@@ -109,11 +111,15 @@ globals_declare1uiv(statsEndpoints, open)
 globals_declare1uiv(statsEndpoints, bytesOut)
 globals_declare1uiv(statsEndpoints, bytesIn)
 globals_declare1uiv(statsEndpoints, sendCongestion)
-globals_declare1iv(statsCh1Endpoints, lastSbn)
-globals_declare1ui(statsCh1, dupBlockCount)
-globals_declare1ui(statsCh1, oooBlockCount)
-globals_declare1ui(statsCh1, blockTimingRingPos) // NOTE: blockTimingRingPos must only be written to in one place by one thread
-globals_declare1uiv(statsCh1, blockTimingRing)
+globals_declare1iv(statsEndpoints, lastSbn)
+
+globals_declare1uiv(statsMux, ringOverrunCount)
+globals_declare1uiv(statsDemux, ringOverrunCount)
+globals_declare1uiv(statsDemux, dupBlockCount)
+globals_declare1uiv(statsDemux, oooBlockCount)
+globals_declare1uiv(statsDemux, blockTimingRingPos) // NOTE: blockTimingRingPos must only be written to in one place by one thread
+globals_declare1uiv(statsDemux, blockTimingRing)
+
 globals_declare1uiv(statsCh1Audio, clippingCounts)
 globals_declare1ffv(statsCh1Audio, levelsFast)
 globals_declare1ffv(statsCh1Audio, levelsSlow)

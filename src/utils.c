@@ -169,7 +169,7 @@ int utils_setCallerThreadRealtime (UNUSED int priority, UNUSED int core) {
   kr = thread_policy_set(threadport, THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&ttcpolicy, THREAD_TIME_CONSTRAINT_POLICY_COUNT);
   if (kr != KERN_SUCCESS) return -3;
 
-  // TODO: join workgroup
+  // TODO: join workgroup, different ttcpolicy for video
 
   return 0;
 #endif
@@ -177,88 +177,6 @@ int utils_setCallerThreadRealtime (UNUSED int priority, UNUSED int core) {
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-
-int utils_slipEncode (const uint8_t *inBuf, int inBufLen, uint8_t *outBuf) {
-  int outPos = 0;
-  for (int i = 0; i < inBufLen; i++) {
-    switch (inBuf[i]) {
-      case 0xc0:
-        outBuf[outPos++] = 0xdb;
-        outBuf[outPos++] = 0xdc;
-        break;
-      case 0xdb:
-        outBuf[outPos++] = 0xdb;
-        outBuf[outPos++] = 0xdd;
-        break;
-      default:
-        outBuf[outPos++] = inBuf[i];
-    }
-  }
-
-  return outPos;
-}
-
-int utils_encodeVarintU64 (uint8_t *buf, int len, uint64_t val) {
-  int pos = 0;
-
-  do {
-    if (pos >= len) return -1;
-    buf[pos] = (val & 0x7f) | 0x80;
-    val >>= 7;
-    pos++;
-  } while (val > 0);
-
-  buf[pos-1] &= 0x7f;
-  return pos;
-}
-
-int utils_decodeVarintU64 (const uint8_t *buf, int len, uint64_t *result) {
-  int bytePos = 0;
-  int bitPos = 0;
-  uint64_t dest = 0;
-
-  do {
-    if (bitPos >= 64) return -1;
-    if (bytePos >= len) return -2;
-    dest |= (uint64_t)(buf[bytePos] & 0x7f) << bitPos;
-    bitPos += 7;
-    bytePos++;
-  } while (buf[bytePos-1] & 0x80);
-
-  *result = dest;
-  return bytePos;
-}
-
-int utils_encodeVarintU16 (uint8_t *buf, int len, uint16_t val) {
-  int pos = 0;
-
-  do {
-    if (pos >= len) return -1;
-    buf[pos] = (val & 0x7f) | 0x80;
-    val >>= 7;
-    pos++;
-  } while (val > 0);
-
-  buf[pos-1] &= 0x7f;
-  return pos;
-}
-
-int utils_decodeVarintU16 (const uint8_t *buf, int len, uint16_t *result) {
-  int bytePos = 0;
-  int bitPos = 0;
-  uint16_t dest = 0;
-
-  do {
-    if (bitPos >= 16) return -1;
-    if (bytePos >= len) return -2;
-    dest |= (uint16_t)(buf[bytePos] & 0x7f) << bitPos;
-    bitPos += 7;
-    bytePos++;
-  } while (buf[bytePos-1] & 0x80);
-
-  *result = dest;
-  return bytePos;
-}
 
 inline uint16_t utils_readU16LE (const uint8_t *buf) {
   return ((uint16_t)buf[1] << 8) | buf[0];

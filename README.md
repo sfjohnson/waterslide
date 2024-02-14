@@ -1,11 +1,12 @@
 # waterslide
 
-Realtime audio transport with multihoming.
+Real-time network protocol with forward error correction and multihoming (blending of data from multiple networks).
 
 ## Potential applications
 
 - Remote recording studio collaboration or rehearsal
 - Low latency wireless monitoring over 5 GHz WiFi
+- Transporting lightly compressed (visually lossless) video over redundant multiple networks
 
 ## Features (implemented and to-do)
 
@@ -164,7 +165,6 @@ See `protobufs/init-config.proto` and `include/globals.h` for more information.
     }
   ],
   "mux": {
-    "maxChannels": 10,
     "maxPacketSize": 1500
   },
   "audio": {
@@ -259,7 +259,6 @@ See `protobufs/init-config.proto` and `include/globals.h` for more information.
     }
   ],
   "mux": {
-    "maxChannels": 10,
     "maxPacketSize": 1500
   },
   "audio": {
@@ -309,7 +308,6 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
     }
   ],
   "mux": {
-    "maxChannels": 10,
     "maxPacketSize": 1500
   },
   "audio": {
@@ -402,7 +400,6 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
     }
   ],
   "mux": {
-    "maxChannels": 10,
     "maxPacketSize": 1500
   },
   "audio": {

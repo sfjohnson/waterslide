@@ -32,14 +32,6 @@ int utils_getElapsedUTime (int lastUTime);
 
 int utils_setCallerThreadRealtime (int priority, int core);
 
-// NOTE: There is no length check, outBuf must be large enough!
-int utils_slipEncode (const uint8_t *inBuf, int inBufLen, uint8_t *outBuf);
-
-int utils_encodeVarintU64 (uint8_t *buf, int len, uint64_t val);
-int utils_decodeVarintU64 (const uint8_t *buf, int len, uint64_t *result);
-int utils_encodeVarintU16 (uint8_t *buf, int len, uint16_t val);
-int utils_decodeVarintU16 (const uint8_t *buf, int len, uint16_t *result);
-
 uint16_t utils_readU16LE (const uint8_t *buf);
 int utils_writeU16LE (uint8_t *buf, uint16_t val);
 

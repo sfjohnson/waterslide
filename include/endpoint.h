@@ -25,8 +25,8 @@ typedef struct {
   int lastPacketUTime;
 } endpoint_t;
 
-int endpoint_init (int (*onPacket)(const uint8_t*, int, int));
-int endpoint_send (const uint8_t *buf, int bufLen); // NOTE: this is not thread safe
+int endpoint_init (int (*onPacket)(const uint8_t*, size_t, int));
+int endpoint_send (const uint8_t *buf, size_t bufLen); // NOTE: this is not thread safe
 void endpoint_deinit (void);
 
 #endif

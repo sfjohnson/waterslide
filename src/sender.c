@@ -3,33 +3,36 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
-#include <stdatomic.h>
 #include <time.h>
 #include "utils.h"
 #include "opus/opus_multistream.h"
 #include "globals.h"
 #include "endpoint.h"
 #include "mux.h"
-#include "raptorq/raptorq.h"
 #include "pcm.h"
-#include "xsem.h"
 #include "audio.h"
 #include "sender.h"
 
 static ck_ring_t encodeRing;
 static ck_ring_buffer_t *encodeRingBuf;
-static mux_transfer_t transfer;
 static int targetEncodeRingSize, encodeRingMaxSize;
 static int audioFrameSize;
 static int encodedPacketSize;
-static double networkSampleRate; // Hz
-static xsem_t encodeLoopInitSem; // TODO: convert to atomic_wait
-static atomic_int encodeLoopStatus = 0;
+static uint8_t chIdInfo, chIdAudio;
+
+static atomic_bool threadsRunning;
+static pthread_t audioLoopThread, infoLoopThread;
+static OpusMSEncoder *opusEncoder = NULL;
+static pcm_codec_t pcmEncoder = { 0 };
+float *sampleBufFloat; // For Opus
+double *sampleBufDouble; // For PCM
+uint8_t *audioEncodedBuf;
 
 static int initOpusEncoder (OpusMSEncoder **encoder) {
   const int networkChannelCount = globals_get1i(audio, networkChannelCount);
@@ -53,48 +56,25 @@ static int initOpusEncoder (OpusMSEncoder **encoder) {
   return 0;
 }
 
-static inline void setEncodeLoopStatus (int status) {
-  encodeLoopStatus = status;
-  xsem_post(&encodeLoopInitSem);
-}
-
-static void *startEncodeLoop (UNUSED void *arg) {
-  const int symbolLen = globals_get1i(fec, symbolLen);
-  const int sourceSymbolsPerBlock = globals_get1i(fec, sourceSymbolsPerBlock);
-  const int repairSymbolsPerBlock = globals_get1i(fec, repairSymbolsPerBlock);
-  const int fecBlockBaseLen = symbolLen * sourceSymbolsPerBlock;
+static int initAudioLoop (void) {
   const int networkChannelCount = globals_get1i(audio, networkChannelCount);
   const unsigned int audioEncoding = globals_get1ui(audio, encoding);
 
-  int fecBlockPos = 0;
-  uint8_t fecSBN = 0;
+  sampleBufFloat = (float*)malloc(4 * networkChannelCount * audioFrameSize); // For Opus
+  sampleBufDouble = (double*)malloc(8 * networkChannelCount * audioFrameSize); // For PCM
+  audioEncodedBuf = (uint8_t*)malloc(encodedPacketSize);
+
+  if (sampleBufFloat == NULL || sampleBufDouble == NULL || audioEncodedBuf == NULL) return -1;
+  if (audioEncoding == AUDIO_ENCODING_OPUS && initOpusEncoder(&opusEncoder) < 0) return -2;
+
+  return 0;
+}
+
+static void *startAudioLoop (UNUSED void *arg) {
+  const int networkChannelCount = globals_get1i(audio, networkChannelCount);
+  const double networkSampleRate = globals_get1i(audio, networkSampleRate); // Hz
+  const unsigned int audioEncoding = globals_get1ui(audio, encoding);
   uint16_t audioPacketSeq = 0;
-
-  int fecEncodedBufLen = (4+symbolLen) * (sourceSymbolsPerBlock+repairSymbolsPerBlock);
-  // fecBlockBuf maximum possible length:
-  //   fecBlockBaseLen - 1 (once the length is >= fecBlockBaseLen, block(s) are sent)
-  // + 2*encodedPacketSize (assuming worst-case scenario of every byte being a SLIP escape sequence)
-  // + 1 (for 0xc0)
-  uint8_t *fecBlockBuf = (uint8_t*)malloc(fecBlockBaseLen + 2*encodedPacketSize);
-  uint8_t *fecEncodedBuf = (uint8_t*)malloc(fecEncodedBufLen);
-  float *sampleBufFloat = (float*)malloc(4 * networkChannelCount * audioFrameSize); // For Opus
-  double *sampleBufDouble = (double*)malloc(8 * networkChannelCount * audioFrameSize); // For PCM
-  uint8_t *audioEncodedBuf = (uint8_t*)malloc(encodedPacketSize);
-
-  OpusMSEncoder *opusEncoder = NULL;
-  pcm_codec_t pcmEncoder = { 0 };
-
-  if (fecBlockBuf == NULL || fecEncodedBuf == NULL || sampleBufFloat == NULL || sampleBufDouble == NULL || audioEncodedBuf == NULL) {
-    setEncodeLoopStatus(-1);
-    return NULL;
-  }
-
-  if (audioEncoding == AUDIO_ENCODING_OPUS && initOpusEncoder(&opusEncoder) < 0) {
-    setEncodeLoopStatus(-2);
-    return NULL;
-  }
-
-  raptorq_initEncoder(fecBlockBaseLen, sourceSymbolsPerBlock);
 
   // Sleep for 30% of our desired interval time to make sure encodeRingSize doesn't get too full despite OS jitter.
   double targetSizeNs = 300000000.0 * targetEncodeRingSize / (double)(networkChannelCount * networkSampleRate);
@@ -102,18 +82,16 @@ static void *startEncodeLoop (UNUSED void *arg) {
   loopSleep.tv_nsec = targetSizeNs;
   loopSleep.tv_sec = 0;
 
-  if (utils_setCallerThreadRealtime(98, 0) < 0) {
-    setEncodeLoopStatus(-3);
-    return NULL;
-  }
+  // pin each channel encode thread to a different core, leaving core 0 for other stuff (Linux only)
+  // DEBUG: check the CPU core count before calling this
+  utils_setCallerThreadRealtime(98, 2);
 
-  // successfully initialised, tell the main thread
-  setEncodeLoopStatus(1);
-  while (encodeLoopStatus == 1) {
+  while (threadsRunning) {
     int encodeRingSize = utils_ringSize(&encodeRing);
     int encodeRingSizeFrames = encodeRingSize / networkChannelCount;
     globals_add1uiv(statsCh1Audio, streamMeterBins, STATS_STREAM_METER_BINS * encodeRingSize / encodeRingMaxSize, 1);
 
+    // TODO: do atomic_notify from audio thread instead of nanosleeping here
     if (encodeRingSizeFrames < audioFrameSize) {
       nanosleep(&loopSleep, NULL);
       continue;
@@ -147,38 +125,35 @@ static void *startEncodeLoop (UNUSED void *arg) {
         break;
     }
 
-    fecBlockPos += utils_slipEncode(audioEncodedBuf, encodedLen + 2, &fecBlockBuf[fecBlockPos]);
-    fecBlockBuf[fecBlockPos++] = 0xc0;
-
-    while (fecBlockPos >= fecBlockBaseLen) {
-      int fecEncodedLen = raptorq_encodeBlock(
-        fecSBN++,
-        fecBlockBuf,
-        fecEncodedBuf,
-        sourceSymbolsPerBlock + repairSymbolsPerBlock
-      );
-      if (fecEncodedLen != fecEncodedBufLen) {
-        // DEBUG: mark encode error here
-        fecBlockPos = 0;
-        continue;
-      }
-      memmove(fecBlockBuf, &fecBlockBuf[fecBlockBaseLen], fecBlockPos - fecBlockBaseLen);
-      fecBlockPos -= fecBlockBaseLen;
-
-      mux_resetTransfer(&transfer);
-      mux_setChannel(&transfer, 1, sourceSymbolsPerBlock + repairSymbolsPerBlock, 4 + symbolLen, fecEncodedBuf);
-      mux_emitPackets(&transfer, endpoint_send);
-    }
+    // TODO: do something if mux_writeData returns error
+    int err = mux_writeData(chIdAudio, audioEncodedBuf, encodedLen + 2);
   }
 
   return NULL;
 }
 
+static void *startInfoLoop (UNUSED void *arg) {
+  // DEBUG: test
+  const char *infoStr = "stan loona";
+  uint8_t infoData[50] = { 0 };
+  memcpy(infoData, infoStr, 10);
+
+  while (threadsRunning) {
+    mux_writeData(chIdInfo, infoData, sizeof(infoData));
+    utils_usleep(500000);
+  }
+
+  return NULL;
+}
+
+/////////////////////
+// public
+/////////////////////
+
 int sender_init (void) {
   const int networkChannelCount = globals_get1i(audio, networkChannelCount);
   const unsigned int audioEncoding = globals_get1ui(audio, encoding);
-
-  networkSampleRate = globals_get1i(audio, networkSampleRate);
+  const double networkSampleRate = globals_get1i(audio, networkSampleRate); // Hz
 
   switch (audioEncoding) {
     case AUDIO_ENCODING_OPUS:
@@ -196,8 +171,28 @@ int sender_init (void) {
       return -1;
   }
 
-  if (mux_init() < 0) return -2;
-  if (mux_initTransfer(&transfer) < 0) return -3;
+  if (mux_init(endpoint_send) < 0) return -2;
+
+  // DEBUG: test
+  int chId = mux_addChannel(
+    50,
+    globals_get1iv(fec, sourceSymbolsPerBlock, 0),
+    globals_get1iv(fec, repairSymbolsPerBlock, 0),
+    globals_get1iv(fec, symbolLen, 0)
+  );
+  if (chId < 0) return -3;
+  chIdInfo = chId;
+
+  chId = mux_addChannel(
+    encodedPacketSize,
+    globals_get1iv(fec, sourceSymbolsPerBlock, 1),
+    globals_get1iv(fec, repairSymbolsPerBlock, 1),
+    globals_get1iv(fec, symbolLen, 1)
+  );
+  if (chId < 0) return -3;
+  chIdAudio = chId;
+
+  mux_setAnchorChannel(chIdAudio);
 
   char privateKey[SEC_KEY_LENGTH + 1] = { 0 };
   char peerPublicKey[SEC_KEY_LENGTH + 1] = { 0 };
@@ -243,22 +238,19 @@ int sender_init (void) {
   err = audio_start(&encodeRing, encodeRingBuf, encodeRingMaxSize);
   if (err < 0) return err - 31;
 
-  pthread_t encodeLoopThread;
-  // TODO: convert to C++20 atomic_wait so we can delete xsem.h
-  if (xsem_init(&encodeLoopInitSem, 0) < 0) return -35;
-  if (pthread_create(&encodeLoopThread, NULL, startEncodeLoop, NULL) != 0) return -36;
+  err = initAudioLoop();
+  if (err < 0) return err - 35;
 
-  // Wait for encodeLoop to initialise
-  xsem_wait(&encodeLoopInitSem);
-  if (encodeLoopStatus < 0) {
-    if (pthread_join(encodeLoopThread, NULL) != 0) return -37;
-    if (xsem_destroy(&encodeLoopInitSem) != 0) return -38;
-    return encodeLoopStatus - 38;
-  }
+  threadsRunning = true;
+  if (pthread_create(&audioLoopThread, NULL, startAudioLoop, NULL) != 0) return -38;
+  if (pthread_create(&infoLoopThread, NULL, startInfoLoop, NULL) != 0) return -38;
 
   return 0;
 }
 
-int sender_deinit (void) {
-  return 0;
+void sender_deinit (void) {
+  threadsRunning = false;
+  pthread_join(audioLoopThread, NULL);
+  pthread_join(infoLoopThread, NULL);
+  mux_deinit();
 }
