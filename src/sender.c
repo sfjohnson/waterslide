@@ -17,6 +17,7 @@
 #include "mux.h"
 #include "pcm.h"
 #include "audio.h"
+#include "config.h"
 #include "sender.h"
 
 static ck_ring_t encodeRing;
@@ -24,10 +25,12 @@ static ck_ring_buffer_t *encodeRingBuf;
 static int targetEncodeRingSize, encodeRingMaxSize;
 static int audioFrameSize;
 static int encodedPacketSize;
-static uint8_t chIdInfo, chIdAudio;
+static uint8_t chIdConfig, chIdAudio;
+static uint8_t *receiverConfigBuf = NULL;
+static int receiverConfigBufLen = 0;
 
 static atomic_bool threadsRunning;
-static pthread_t audioLoopThread, infoLoopThread;
+static pthread_t audioLoopThread, configLoopThread;
 static OpusMSEncoder *opusEncoder = NULL;
 static pcm_codec_t pcmEncoder = { 0 };
 float *sampleBufFloat; // For Opus
@@ -91,7 +94,7 @@ static void *startAudioLoop (UNUSED void *arg) {
     int encodeRingSizeFrames = encodeRingSize / networkChannelCount;
     globals_add1uiv(statsCh1Audio, streamMeterBins, STATS_STREAM_METER_BINS * encodeRingSize / encodeRingMaxSize, 1);
 
-    // TODO: do atomic_notify from audio thread instead of nanosleeping here
+    // TODO: do xwait_notify from audio thread instead of nanosleeping here; I'm pretty sure xwait_notify doesn't do a syscall
     if (encodeRingSizeFrames < audioFrameSize) {
       nanosleep(&loopSleep, NULL);
       continue;
@@ -126,21 +129,16 @@ static void *startAudioLoop (UNUSED void *arg) {
     }
 
     // TODO: do something if mux_writeData returns error
-    int err = mux_writeData(chIdAudio, audioEncodedBuf, encodedLen + 2);
+    /*int err = */mux_writeData(chIdAudio, audioEncodedBuf, encodedLen + 2);
   }
 
   return NULL;
 }
 
-static void *startInfoLoop (UNUSED void *arg) {
-  // DEBUG: test
-  const char *infoStr = "stan loona";
-  uint8_t infoData[50] = { 0 };
-  memcpy(infoData, infoStr, 10);
-
+static void *startConfigLoop (UNUSED void *arg) {
   while (threadsRunning) {
-    mux_writeData(chIdInfo, infoData, sizeof(infoData));
-    utils_usleep(500000);
+    mux_writeData(chIdConfig, receiverConfigBuf, receiverConfigBufLen);
+    sleep(1);
   }
 
   return NULL;
@@ -173,15 +171,17 @@ int sender_init (void) {
 
   if (mux_init(endpoint_send) < 0) return -2;
 
-  // DEBUG: test
+  receiverConfigBufLen = config_encodeReceiverConfig(&receiverConfigBuf);
+  if (receiverConfigBufLen < 0) return receiverConfigBufLen - 2;
+
   int chId = mux_addChannel(
-    50,
+    receiverConfigBufLen,
     globals_get1iv(fec, sourceSymbolsPerBlock, 0),
     globals_get1iv(fec, repairSymbolsPerBlock, 0),
     globals_get1iv(fec, symbolLen, 0)
   );
-  if (chId < 0) return -3;
-  chIdInfo = chId;
+  if (chId < 0) return -5;
+  chIdConfig = chId;
 
   chId = mux_addChannel(
     encodedPacketSize,
@@ -189,7 +189,7 @@ int sender_init (void) {
     globals_get1iv(fec, repairSymbolsPerBlock, 1),
     globals_get1iv(fec, symbolLen, 1)
   );
-  if (chId < 0) return -3;
+  if (chId < 0) return -6;
   chIdAudio = chId;
 
   mux_setAnchorChannel(chIdAudio);
@@ -201,15 +201,15 @@ int sender_init (void) {
 
   if (strlen(privateKey) != SEC_KEY_LENGTH || strlen(peerPublicKey) != SEC_KEY_LENGTH) {
     printf("Expected privateKey and peerPublicKey to be base64 x25519 keys.\n");
-    return -4;
+    return -7;
   }
 
   int err = audio_init(false);
-  if (err < 0) return err - 21;
+  if (err < 0) return err - 7;
 
   // NOTE: endpoint_init will block until network discovery is completed
   err = endpoint_init(NULL);
-  if (err < 0) return err - 4;
+  if (err < 0) return err - 16;
 
   double deviceLatency = audio_getDeviceLatency();
 
@@ -233,24 +233,25 @@ int sender_init (void) {
   globals_set1i(statsCh1Audio, streamBufferSize, encodeRingMaxSize / networkChannelCount);
 
   err = utils_ringInit(&encodeRing, &encodeRingBuf, encodeRingMaxSize);
-  if (err < 0) return err - 30;
+  if (err < 0) return err - 23;
 
   err = audio_start(&encodeRing, encodeRingBuf, encodeRingMaxSize);
-  if (err < 0) return err - 31;
+  if (err < 0) return err - 24;
 
   err = initAudioLoop();
-  if (err < 0) return err - 35;
+  if (err < 0) return err - 36;
 
   threadsRunning = true;
-  if (pthread_create(&audioLoopThread, NULL, startAudioLoop, NULL) != 0) return -38;
-  if (pthread_create(&infoLoopThread, NULL, startInfoLoop, NULL) != 0) return -38;
+  if (pthread_create(&audioLoopThread, NULL, startAudioLoop, NULL) != 0) return -39;
+  if (pthread_create(&configLoopThread, NULL, startConfigLoop, NULL) != 0) return -40;
 
   return 0;
 }
 
-void sender_deinit (void) {
+int sender_deinit (void) {
   threadsRunning = false;
   pthread_join(audioLoopThread, NULL);
-  pthread_join(infoLoopThread, NULL);
+  pthread_join(configLoopThread, NULL);
   mux_deinit();
+  return audio_deinit();
 }

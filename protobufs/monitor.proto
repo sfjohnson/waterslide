@@ -53,6 +53,7 @@ message MonitorProto {
     oneof contentStats {
       AudioStats audioStats = 5;
     }
+    uint32 ringOverrunCount = 6;
   }
 
   repeated MuxChannelStats muxChannel = 1;

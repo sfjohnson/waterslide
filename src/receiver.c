@@ -13,21 +13,34 @@
 #include "utils.h"
 #include "pcm.h"
 #include "endpoint.h"
+#include "config.h"
+#include "xwait.h"
 #include "receiver.h"
 
 static OpusMSDecoder *decoder = NULL;
 static pcm_codec_t pcmDecoder = { 0 };
 static ck_ring_t decodeRing;
 static ck_ring_buffer_t *decodeRingBuf;
+static xwait_t configWaitHandle;
+static uint8_t *receivedConfigData = NULL;
+static int receivedConfigDataLen = 0;
 
 static unsigned int audioEncoding;
 static int networkChannelCount;
 static int encodedPacketSize, audioFrameSize, decodeRingMaxSize;
 static float *sampleBufFloat;
 
-void onDataInfoChannel (const uint8_t *data, int dataLen) {
-  // DEBUG: test
-  printf("info channel (dataLen %d): %.*s\n", dataLen, dataLen, data);
+void onDataConfigChannel (const uint8_t *data, int dataLen) {
+  // here we are in the realtime decode thread created by demux_addChannel, one thread per channel
+
+  // DEBUG: I'm only allowing one shot at parsing the data. Could it be invalid during block loss?
+  // If so, need to add a CRC
+  if (receivedConfigData != NULL) return;
+
+  receivedConfigData = (uint8_t *)malloc(dataLen);
+  memcpy(receivedConfigData, data, dataLen);
+  receivedConfigDataLen = dataLen;
+  xwait_notify(&configWaitHandle);
 }
 
 void onDataAudioChannel (const uint8_t *buf, int len) {
@@ -82,24 +95,40 @@ void onDataAudioChannel (const uint8_t *buf, int len) {
   }
 }
 
-int receiver_init (void) {
+int receiver_waitForConfig (void) {
+  xwait_wait(&configWaitHandle);
+
+  int err = config_parseBuf(receivedConfigData, receivedConfigDataLen);
+  if (err < 0) {
+    // DEBUG: log
+    printf("config_parseBuf error: %d\n", err);
+    return -1;
+  }
+
   networkChannelCount = globals_get1i(audio, networkChannelCount);
   audioEncoding = globals_get1ui(audio, encoding);
 
+  unsigned char mapping[networkChannelCount]; // only for opus but can't put this inside switch case
   switch (audioEncoding) {
     case AUDIO_ENCODING_OPUS:
       audioFrameSize = globals_get1i(opus, frameSize);
       // CBR + 2 bytes for sequence number
       encodedPacketSize = globals_get1i(opus, bitrate) * globals_get1i(opus, frameSize) / (8 * AUDIO_OPUS_SAMPLE_RATE) + 2;
+
+      for (int i = 0; i < networkChannelCount; i++) mapping[i] = i;
+      decoder = opus_multistream_decoder_create(AUDIO_OPUS_SAMPLE_RATE, networkChannelCount, networkChannelCount, 0, mapping, &err);
+      if (err < 0) return -2;
       break;
+
     case AUDIO_ENCODING_PCM:
       audioFrameSize = globals_get1i(pcm, frameSize);
       // 24-bit samples + 2 bytes for CRC + 2 bytes for sequence number
       encodedPacketSize = 3 * networkChannelCount * audioFrameSize + 4;
       break;
+
     default:
       printf("Error: Audio encoding %d not implemented.\n", audioEncoding);
-      return -1;
+      return -3;
   }
 
   int decodeRingLength = globals_get1i(audio, decodeRingLength);
@@ -107,18 +136,17 @@ int receiver_init (void) {
   globals_set1i(statsCh1Audio, streamBufferSize, decodeRingLength);
 
   sampleBufFloat = (float *)malloc(4 * networkChannelCount * audioFrameSize);
-  if (sampleBufFloat == NULL) return -2;
+  if (sampleBufFloat == NULL) return -4;
 
-  if (utils_ringInit(&decodeRing, &decodeRingBuf, decodeRingMaxSize) < 0) return -2;
+  if (utils_ringInit(&decodeRing, &decodeRingBuf, decodeRingMaxSize) < 0) return -5;
 
-  int err = demux_addChannel(
-    100, // DEBUG: test
-    globals_get1iv(fec, sourceSymbolsPerBlock, 0),
-    globals_get1iv(fec, repairSymbolsPerBlock, 0),
-    globals_get1iv(fec, symbolLen, 0),
-    onDataInfoChannel
-  );
-  if (err < 0) return -3;
+  err = audio_init(true);
+  if (err < 0) return err - 5;
+
+  // start audio before demux_addChannel so that we don't call syncer_enqueueBuf before
+  // audio module has called syncer_init
+  err = audio_start(&decodeRing, decodeRingBuf, decodeRingMaxSize);
+  if (err < 0) return err - 100;
 
   err = demux_addChannel(
     encodedPacketSize,
@@ -127,14 +155,22 @@ int receiver_init (void) {
     globals_get1iv(fec, symbolLen, 1),
     onDataAudioChannel
   );
-  if (err < 0) return -3;
+  if (err < 0) return -200;
 
-  if (audioEncoding == AUDIO_ENCODING_OPUS) {
-    unsigned char mapping[networkChannelCount];
-    for (int i = 0; i < networkChannelCount; i++) mapping[i] = i;
-    decoder = opus_multistream_decoder_create(AUDIO_OPUS_SAMPLE_RATE, networkChannelCount, networkChannelCount, 0, mapping, &err);
-    if (err < 0) return -4;
-  }
+  return 0;
+}
+
+int receiver_init (void) {
+  xwait_init(&configWaitHandle);
+
+  int err = demux_addChannel(
+    500, // leave plenty of room for ALSA mixer control config
+    globals_get1iv(fec, sourceSymbolsPerBlock, 0),
+    globals_get1iv(fec, repairSymbolsPerBlock, 0),
+    globals_get1iv(fec, symbolLen, 0),
+    onDataConfigChannel
+  );
+  if (err < 0) return -1;
 
   char privateKey[SEC_KEY_LENGTH + 1] = { 0 };
   char peerPublicKey[SEC_KEY_LENGTH + 1] = { 0 };
@@ -143,23 +179,19 @@ int receiver_init (void) {
 
   if (strlen(privateKey) != SEC_KEY_LENGTH || strlen(peerPublicKey) != SEC_KEY_LENGTH) {
     printf("Expected privateKey and peerPublicKey to be base64 x25519 keys.\n");
-    return -5;
+    return -2;
   }
-
-  err = audio_init(true);
-  if (err < 0) return err - 5;
-
-  // Start audio before endpoint so that we don't call audio_enqueueBuf before audio module has called syncer_init
-  err = audio_start(&decodeRing, decodeRingBuf, decodeRingMaxSize);
-  if (err < 0) return err - 100;
 
   // NOTE: endpoint_init will block until network discovery is completed
   err = endpoint_init(demux_readPacket);
-  if (err < 0) return err - 200;
+  if (err < 0) return err - 2;
 
   return 0;
 }
 
-void receiver_deinit (void) {
+int receiver_deinit (void) {
+  xwait_destroy(&configWaitHandle);
   demux_deinit();
+  if (receivedConfigData != NULL) free(receivedConfigData);
+  return audio_deinit();
 }

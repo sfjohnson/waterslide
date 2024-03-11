@@ -9,8 +9,21 @@
 extern "C" {
 #endif
 
-// These must only be called from the main thread.
+// called publicly by both
 int config_init (const char *b64ConfigStr);
+
+// called publicly by receiver only
+// may cause a non thread-safe mixer update on Linux
+int config_parseBuf (const uint8_t *buf, size_t bufLen);
+
+// called publicly by sender only
+// sender must call config_init first
+// allocates memory for destBuf and returns its length
+// caller must free destBuf
+int config_encodeReceiverConfig (uint8_t **destBuf);
+
+// called publicly by both
+// may cause a non thread-safe mixer update on Linux
 int config_deinit (void);
 
 #ifdef __cplusplus

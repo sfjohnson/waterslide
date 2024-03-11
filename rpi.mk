@@ -21,7 +21,7 @@ LIBS = -lstdc++ -ldl -lm -lopus -luwebsockets -lraptorq -lck -lr8brain -lprotobu
 
 TARGET = waterslide-rpi
 PROTOBUFS = init-config.proto monitor.proto
-SRCSC = main.c audio-linux.c sender.c receiver.c globals.c utils.c slip.c mux.c demux.c endpoint.c pcm.c event-recorder.c
+SRCSC = main.c audio-linux.c sender.c receiver.c globals.c utils.c mux.c demux.c endpoint.c pcm.c event-recorder.c
 SRCSCPP = syncer/enqueue.cpp syncer/resamp-state.cpp syncer/receiver-sync.cpp config.cpp monitor.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
 OBJS = $(subst .c,.o,$(addprefix src/,$(SRCSC))) $(subst .cpp,.o,$(addprefix src/,$(SRCSCPP)))
 

@@ -19,7 +19,7 @@ PROTOCFLAGS = --cpp_out=.
 # CFLAGS = -g3 -fno-omit-frame-pointer -fsanitize=address
 # LIBS = -g3 -fno-omit-frame-pointer -fsanitize=address
 CFLAGS = -std=c17 -O3 -flto -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I$(OPENSSL_PATH)/include
-CPPFLAGS = -std=c++20 -O3 -flto -fstrict-aliasing -Wno-gnu-anonymous-struct -Wno-nested-anon-types -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I$(OPENSSL_PATH)/include
+CPPFLAGS = -std=c++20 -O3 -flto -fstrict-aliasing -Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-gcc-compat -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I$(OPENSSL_PATH)/include
 LDFLAGS = -Llib/$(ARCH) -L$(OPENSSL_PATH)/lib -pthread -flto
 LIBS = -lstdc++ -lm -lz -lopus -lportaudio -lr8brain -lraptorq -lck -lssl -lcrypto -luwebsockets -lprotobuf-lite -lboringtun -framework CoreAudio -framework AudioUnit -framework AudioToolbox -framework CoreServices -framework Security
 

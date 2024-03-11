@@ -37,7 +37,7 @@ Real-time network protocol with forward error correction and multihoming (blendi
 
 ## Setup (common)
 
-1. Install Node.js 18 and npm 9
+1. Install Node.js >= 18 and npm >= 9
 
 2. Run
 ```sh
@@ -146,13 +146,15 @@ cd discovery-server
 
 ## Example configs
 
+Audio and video config for both sender and receiver are contained only in sender config. Once receiver gets its audio and video config from channel 0, it can then start decoding other channels to receive audio and video data. Initial receiver config is minimal: networking, and FEC layout for channel 0 (config channel).
+
 See `protobufs/init-config.proto` and `include/globals.h` for more information.
 
-### Android sender (PCM encoding, Mi A3, internal mic)
+### Sender (PCM, Mi A3 internal mic to macOS)
 
 ```json
 {
-  "mode": 0,
+  "mode": 1,
   "privateKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
   "peerPublicKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
   "discovery": {
@@ -169,127 +171,108 @@ See `protobufs/init-config.proto` and `include/globals.h` for more information.
   },
   "audio": {
     "networkChannelCount": 2,
-    "deviceSampleRate": 48000,
-    "decodeRingLength": 8192,
-    "linux": {
-      "cardId": 0,
-      "deviceId": 0,
-      "deviceChannelCount": 2,
-      "bitsPerSample": 16,
-      "periodSize": 128,
-      "periodCount": 8,
-      "loopSleep": 2000,
-      "controls": [
-        {
-          "id": 20,
-          "intValues": { "values": [1] }
-        }, {
-          "id": 21,
-          "intValues": { "values": [1] }
-        }, {
-          "id": 44,
-          "enumValue": "ADC0"
-        }, {
-          "id": 45,
-          "enumValue": "ADC2"
-        }, {
-          "id": 52,
-          "enumValue": "SWR_MIC"
-        }, {
-          "id": 53,
-          "enumValue": "SWR_MIC"
-        }, {
-          "id": 83,
-          "enumValue": "DEC0"
-        }, {
-          "id": 1222,
-          "intValues": { "values": [1, 0] }
-        }, {
-          "id": 3345,
-          "enumValue": "Two"
-        }, {
-          "id": 3357,
-          "enumValue": "S16_LE"
-        }, {
-          "id": 3467,
-          "enumValue": "INP3"
-        }, {
-          "id": 3468,
-          "intValues": { "values": [1] }
-        }, {
-          "id": 3469,
-          "intValues": { "values": [1] }
-        }
-      ]
-    },
     "pcm": {
-      "frameSize": 240
+      "frameSize": 240,
+      "networkSampleRate": 48000
     },
-    "levelSlowAttack": 0.004,
-    "levelSlowRelease": 0.0008,
-    "levelFastAttack": 0.31,
-    "levelFastRelease": 0.00003
+    "sender": {
+      "deviceSampleRate": 48000,
+      "decodeRingLength": 8192,
+      "linux": {
+        "cardId": 0,
+        "deviceId": 0,
+        "deviceChannelCount": 2,
+        "bitsPerSample": 16,
+        "periodSize": 128,
+        "periodCount": 8,
+        "loopSleep": 2000,
+        "controls": [
+          {
+            "id": 20,
+            "intValues": { "values": [1] }
+          }, {
+            "id": 21,
+            "intValues": { "values": [1] }
+          }, {
+            "id": 44,
+            "enumValue": "ADC0"
+          }, {
+            "id": 45,
+            "enumValue": "ADC2"
+          }, {
+            "id": 52,
+            "enumValue": "SWR_MIC"
+          }, {
+            "id": 53,
+            "enumValue": "SWR_MIC"
+          }, {
+            "id": 83,
+            "enumValue": "DEC0"
+          }, {
+            "id": 1222,
+            "intValues": { "values": [1, 0] }
+          }, {
+            "id": 3345,
+            "enumValue": "Two"
+          }, {
+            "id": 3357,
+            "enumValue": "S16_LE"
+          }, {
+            "id": 3467,
+            "enumValue": "INP3"
+          }, {
+            "id": 3468,
+            "intValues": { "values": [1] }
+          }, {
+            "id": 3469,
+            "intValues": { "values": [1] }
+          }
+        ]
+      },
+      "levelSlowAttack": 0.004,
+      "levelSlowRelease": 0.0008,
+      "levelFastAttack": 0.31,
+      "levelFastRelease": 0.00003
+    },
+    "receiver": {
+      "deviceSampleRate": 48000,
+      "decodeRingLength": 8192,
+      "macos": {
+        "deviceName": "waterslide"
+      },
+      "levelSlowAttack": 0.004,
+      "levelSlowRelease": 0.0008,
+      "levelFastAttack": 0.31,
+      "levelFastRelease": 0.00003
+    }
   },
-  "fec": {
-    "symbolLen": 256,
-    "sourceSymbolsPerBlock": 6,
-    "repairSymbolsPerBlock": 3
-  },
-  "monitor": {
-    "wsPort": 7681,
-    "uiPort": 8080
-  }
-}
-```
-
-### macOS sender (Opus encoding)
-
-```json
-{
-  "mode": 0,
-  "privateKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
-  "peerPublicKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
-  "discovery": {
-    "serverAddr": [10, 10, 10, 10],
-    "serverPort": 26172
-  },
-  "endpoints": [
+  "fec": [
     {
-      "interface": "en0"
+      "chId": 0,
+      "symbolLen": 128,
+      "sourceSymbolsPerBlock": 1,
+      "repairSymbolsPerBlock": 2
+    },
+    {
+      "chId": 1,
+      "symbolLen": 256,
+      "sourceSymbolsPerBlock": 6,
+      "repairSymbolsPerBlock": 3
     }
   ],
-  "mux": {
-    "maxPacketSize": 1500
-  },
-  "audio": {
-    "networkChannelCount": 2,
-    "deviceSampleRate": 48000,
-    "decodeRingLength": 8192,
-    "macos": {
-      "deviceName": "waterslide"
-    },
-    "opus": {
-      "bitrate": 256000,
-      "frameSize": 240
-    },
-    "levelSlowAttack": 0.004,
-    "levelSlowRelease": 0.0008,
-    "levelFastAttack": 0.31,
-    "levelFastRelease": 0.00003
-  },
-  "fec": {
-    "symbolLen": 256,
-    "sourceSymbolsPerBlock": 6,
-    "repairSymbolsPerBlock": 3
-  },
   "monitor": {
-    "wsPort": 7681,
-    "uiPort": 8080
+    "uiPort": 8080,
+    "sender": {
+      "wsPort": 7681
+    },
+    "receiver": {
+      "wsPort": 7682
+    }
   }
 }
 ```
 
-### Android receiver (Opus encoding, Mi A3, headphone jack)
+### Sender (Opus, macOS to Mi A3 headphone jack)
 
 Note: adjusting volume requires additional ALSA mixer control(s) which are different for each chip.
 
@@ -304,98 +287,6 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
   },
   "endpoints": [
     {
-      "interface": "wlan0"
-    }
-  ],
-  "mux": {
-    "maxPacketSize": 1500
-  },
-  "audio": {
-    "networkChannelCount": 2,
-    "deviceSampleRate": 48000,
-    "decodeRingLength": 8192,
-    "linux": {
-      "cardId": 0,
-      "deviceId": 0,
-      "deviceChannelCount": 2,
-      "bitsPerSample": 32,
-      "periodSize": 32,
-      "periodCount": 8,
-      "loopSleep": 300,
-      "controls": [
-        {
-          "id": 77,
-          "enumValue": "AIF1_PB"
-        }, {
-          "id": 78,
-          "enumValue": "AIF1_PB"
-        },{
-          "id": 94,
-          "enumValue": "CLSH_DSM_OUT"
-        },{
-          "id": 95,
-          "enumValue": "CLSH_DSM_OUT"
-        },{
-          "id": 99,
-          "enumValue": "RX0"
-        },{
-          "id": 102,
-          "enumValue": "RX1"
-        },{
-          "id": 1032,
-          "intValues": { "values": [1, 0] }
-        }, {
-          "id": 3336,
-          "enumValue": "Two"
-        }, {
-          "id": 3349,
-          "enumValue": "S32_LE"
-        }, {
-          "id": 3361,
-          "enumValue": "KHZ_48"
-        },{
-          "id": 3473,
-          "intValues": { "values": [1] }
-        }, {
-          "id": 3474,
-          "intValues": { "values": [1] }
-        }
-      ]
-    },
-    "opus": {
-      "bitrate": 256000,
-      "frameSize": 240
-    },
-    "levelSlowAttack": 0.004,
-    "levelSlowRelease": 0.0008,
-    "levelFastAttack": 0.31,
-    "levelFastRelease": 0.00003
-  },
-  "fec": {
-    "symbolLen": 256,
-    "sourceSymbolsPerBlock": 6,
-    "repairSymbolsPerBlock": 3
-  },
-  "monitor": {
-    "wsPort": 7681,
-    "uiPort": 8080
-  }
-}
-```
-
-### macOS receiver (PCM encoding)
-
-```json
-{
-  "mode": 1,
-  "privateKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
-  "peerPublicKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
-  "discovery": {
-    "serverAddr": [10, 10, 10, 10],
-    "serverPort": 26172
-  },
-  "endpoints": [
-    {
       "interface": "en0"
     }
   ],
@@ -404,27 +295,132 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
   },
   "audio": {
     "networkChannelCount": 2,
-    "deviceSampleRate": 48000,
-    "decodeRingLength": 8192,
-    "macos": {
-      "deviceName": "waterslide"
+    "opus": {
+      "bitrate": 256000,
+      "frameSize": 240
     },
-    "pcm": {
-      "frameSize": 240,
-      "networkSampleRate": 48000
+    "sender": {
+      "deviceSampleRate": 48000,
+      "decodeRingLength": 2048,
+      "macos": {
+        "deviceName": "waterslide"
+      },
+      "levelSlowAttack": 0.004,
+      "levelSlowRelease": 0.0008,
+      "levelFastAttack": 0.31,
+      "levelFastRelease": 0.00003
     },
-    "levelSlowAttack": 0.004,
-    "levelSlowRelease": 0.0008,
-    "levelFastAttack": 0.31,
-    "levelFastRelease": 0.00003
+    "receiver": {
+      "deviceSampleRate": 48000,
+      "decodeRingLength": 8192,
+      "linux": {
+        "cardId": 0,
+        "deviceId": 0,
+        "deviceChannelCount": 2,
+        "bitsPerSample": 32,
+        "periodSize": 32,
+        "periodCount": 8,
+        "loopSleep": 300,
+        "controls": [
+          {
+            "id": 77,
+            "enumValue": "AIF1_PB"
+          }, {
+            "id": 78,
+            "enumValue": "AIF1_PB"
+          },{
+            "id": 94,
+            "enumValue": "CLSH_DSM_OUT"
+          },{
+            "id": 95,
+            "enumValue": "CLSH_DSM_OUT"
+          },{
+            "id": 99,
+            "enumValue": "RX0"
+          },{
+            "id": 102,
+            "enumValue": "RX1"
+          },{
+            "id": 1032,
+            "intValues": { "values": [1, 0] }
+          }, {
+            "id": 3336,
+            "enumValue": "Two"
+          }, {
+            "id": 3349,
+            "enumValue": "S32_LE"
+          }, {
+            "id": 3361,
+            "enumValue": "KHZ_48"
+          },{
+            "id": 3473,
+            "intValues": { "values": [1] }
+          }, {
+            "id": 3474,
+            "intValues": { "values": [1] }
+          }
+        ]
+      },
+      "levelSlowAttack": 0.004,
+      "levelSlowRelease": 0.0008,
+      "levelFastAttack": 0.31,
+      "levelFastRelease": 0.00003
+    }
   },
-  "fec": {
-    "symbolLen": 256,
-    "sourceSymbolsPerBlock": 6,
-    "repairSymbolsPerBlock": 3
-  },
+  "fec": [
+    {
+      "chId": 0,
+      "symbolLen": 128,
+      "sourceSymbolsPerBlock": 1,
+      "repairSymbolsPerBlock": 2
+    },
+    {
+      "chId": 1,
+      "symbolLen": 256,
+      "sourceSymbolsPerBlock": 2,
+      "repairSymbolsPerBlock": 1
+    }
+  ],
   "monitor": {
-    "wsPort": 7681,
+    "uiPort": 8080,
+    "sender": {
+      "wsPort": 7681
+    },
+    "receiver": {
+      "wsPort": 7682
+    }
+  }
+}
+```
+
+### Receiver
+
+```json
+{
+  "mode": 0,
+  "privateKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
+  "peerPublicKey": "abcdefghijklmnopqrstuvwxyzABCDEFGH012345679=",
+  "discovery": {
+    "serverAddr": [10, 10, 10, 10],
+    "serverPort": 26172
+  },
+  "endpoints": [
+    {
+      "interface": "wlan0"
+    }
+  ],
+  "mux": {
+    "maxPacketSize": 1500
+  },
+  "fec": [
+    {
+      "chId": 0,
+      "symbolLen": 128,
+      "sourceSymbolsPerBlock": 1,
+      "repairSymbolsPerBlock": 2
+    }
+  ],
+  "monitor": {
     "uiPort": 8080
   }
 }
@@ -432,7 +428,11 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
 
 ## Monitor
 
-The C/C++/Rust code runs a WebSocket server that provides analytics data. An interface called the monitor connects to this server and provides audio meters and detailed information on the status and health of the stream.
+The C/C++/Rust code runs a WebSocket server that provides live data. An interface called the monitor connects to this server and provides audio meters, timing graphs, and detailed information on the status and health of the stream.
+
+Note: the monitor interface is due for a redesign once video is implemented.
+
+<img alt="monitor screenshot" src="monitor-screenshot.png" width="600" />
 
 ### Dev server
 
@@ -442,7 +442,7 @@ The C/C++/Rust code runs a WebSocket server that provides analytics data. An int
 cd monitor
 npm run dev
 ```
-3. Go to http://localhost:3000
+3. Go to http://localhost:5173
 4. If waterslide is started or restarted, refresh the page.
 5. in `monitor/src/App.svelte` the address of the WebSocket server can be changed for monitoring a remote device running waterslide.
 

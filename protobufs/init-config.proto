@@ -6,10 +6,121 @@
 syntax = "proto3";
 option optimize_for = LITE_RUNTIME;
 
+message Audio {
+  message Opus { // networkSampleRate is always 48000
+    int32 bitrate = 1; // 128000 bps per channel is a good starting point. This value is the total bitrate not per-channel bitrate.
+    int32 frameSize = 2; // 240 samples = 5 ms @ 48 kHz // https://www.audiokinetic.com/library/edge/?source=Help&id=opus_soft_parameters
+  }
+
+  message PCM {
+    int32 frameSize = 1; // In samples. Packet size in bytes is 3 * channelCount * frameSize + 2
+    int32 networkSampleRate = 2; // Receiver only. For sender networkSampleRate = deviceSampleRate
+  }
+
+  message MixerIntValues {
+    repeated int32 values = 1;
+  }
+
+  message MixerControl {
+    int32 id = 1;
+    oneof values {
+      string enumValue = 2;
+      MixerIntValues intValues = 3;
+    }
+  }
+
+  message MacOS {
+    string deviceName = 1;
+  }
+
+  message Linux {
+    int32 cardId = 1;
+    int32 deviceId = 2;
+    int32 deviceChannelCount = 3;
+    int32 bitsPerSample = 4;
+    int32 periodSize = 5; // In samples
+    int32 periodCount = 6;
+    int32 loopSleep = 7; // In microseconds
+    repeated MixerControl controls = 8;
+  }
+
+  message SenderReceiver {
+    int32 deviceSampleRate = 1;
+    int32 decodeRingLength = 2; // In samples. Must be larger than frameSize (Opus or PCM). Affects receive latency.
+
+    oneof osConfig {
+      MacOS macos = 3;
+      Linux linux = 4;
+    }
+
+    // higher means quicker
+    // Main meter
+    float levelSlowAttack = 5;
+    float levelSlowRelease = 6;
+    // Peak meter
+    float levelFastAttack = 7;
+    float levelFastRelease = 8;
+  }
+
+  int32 networkChannelCount = 1;
+  oneof encoding {
+    Opus opus = 2;
+    PCM pcm = 3;
+  }
+
+  SenderReceiver sender = 4;
+  SenderReceiver receiver = 5;
+}
+
+message Video {
+  message J2K {
+    int32 numDecomposition = 1;
+    int32 blockWidth = 2;
+    int32 blockHeight = 3;
+    float qstep = 4;
+  }
+
+  message SenderReceiver {
+    int32 deviceWidth = 1;
+    int32 deviceHeight = 2;
+    int32 deviceFPS = 3;
+  }
+
+  int32 networkWidth = 1;
+  int32 networkHeight = 2;
+  int32 networkFPS = 3;
+
+  oneof encoding {
+    J2K j2k = 4;
+  }
+
+  SenderReceiver sender = 5;
+  SenderReceiver receiver = 6;
+}
+
+message FecLayout {
+  int32 chId = 1;
+  int32 symbolLen = 2; // in bytes
+  int32 sourceSymbolsPerBlock = 3;
+  int32 repairSymbolsPerBlock = 4;
+}
+
+message Monitor {
+  message SenderReceiver {
+    int32 wsPort = 1;
+    int32 udpPort = 3;
+    bytes udpAddr = 4;
+  }
+
+  int32 uiPort = 1; // frontend only
+  SenderReceiver sender = 2;
+  SenderReceiver receiver = 3;
+}
+
 message InitConfigProto {
   enum Mode {
-    SENDER = 0;
-    RECEIVER = 1;
+    RECEIVER = 0;
+    SENDER = 1;
   }
 
   message Discovery {
@@ -25,87 +136,15 @@ message InitConfigProto {
     uint32 maxPacketSize = 1;
   }
 
-  message Opus { // networkSampleRate is always 48000
-    int32 bitrate = 1; // 128000 bps per channel is a good starting point. This value is the total bitrate not per-channel bitrate.
-    int32 frameSize = 2; // 240 samples = 5 ms @ 48 kHz // https://www.audiokinetic.com/library/edge/?source=Help&id=opus_soft_parameters
-  }
-
-  message PCM {
-    int32 frameSize = 1; // In samples. Packet size in bytes is 3 * channelCount * frameSize + 2
-    int32 networkSampleRate = 2; // Receiver only. For sender networkSampleRate = deviceSampleRate
-  }
-
-  message MacOS {
-    string deviceName = 1;
-  }
-
-  message MixerIntValues {
-    repeated int32 values = 1;
-  }
-
-  message MixerControl {
-    int32 id = 1;
-    oneof values {
-      string enumValue = 2;
-      MixerIntValues intValues = 3;
-    }
-  }
-
-  message Linux {
-    int32 cardId = 1;
-    int32 deviceId = 2;
-    int32 deviceChannelCount = 3;
-    int32 bitsPerSample = 4;
-    int32 periodSize = 5; // In samples
-    int32 periodCount = 6;
-    int32 loopSleep = 7; // In microseconds
-    repeated MixerControl controls = 8;
-  }
-
-  message Audio {
-    int32 networkChannelCount = 1;
-    int32 deviceSampleRate = 2;
-    int32 decodeRingLength = 3; // In samples. Must be larger than frameSize (Opus or PCM). Affects receive latency.
-
-    oneof osConfig {
-      MacOS macos = 4;
-      Linux linux = 5;
-    }
-
-    oneof encoding {
-      Opus opus = 6;
-      PCM pcm = 7;
-    }
-
-    // higher means quicker
-    // Main meter
-    float levelSlowAttack = 8;
-    float levelSlowRelease = 9;
-    // Peak meter
-    float levelFastAttack = 10;
-    float levelFastRelease = 11;
-  }
-
-  message Fec {
-    int32 symbolLen = 1; // In bytes
-    int32 sourceSymbolsPerBlock = 2;
-    int32 repairSymbolsPerBlock = 3;
-  }
-
-  message Monitor {
-    int32 wsPort = 1;
-    int32 uiPort = 2;
-    int32 udpPort = 3;
-    bytes udpAddr = 4;
-  }
-
-  Mode mode = 1;
-  Discovery discovery = 2;
-  repeated Endpoint endpoints = 3;
-  string privateKey = 4;
-  string peerPublicKey = 5;
-  Mux mux = 6;
-  Audio audio = 7;
-  Fec fec = 8;
-  Monitor monitor = 9;
+  Mode mode = 1; // both
+  Discovery discovery = 2; // both
+  repeated Endpoint endpoints = 3; // both
+  string privateKey = 4; // both
+  string peerPublicKey = 5; // both
+  Mux mux = 6; // both
+  // the fields below are sent from the sender to the receiver on the config channel
+  Audio audio = 7; // sender only
+  Video video = 8; // sender only
+  repeated FecLayout fec = 9; // chId == 0 both (config channel), others sender only
+  Monitor monitor = 10; // uiPort both, others sender only
 }

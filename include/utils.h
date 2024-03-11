@@ -51,6 +51,9 @@ int utils_randBetween (int min, int max);
 // NOTE: this function is undefined for x = 0 or x = 1
 int utils_roundUpPowerOfTwo (unsigned int x);
 
+// this calls malloc, caller must call free on returned buffer
+uint8_t *utils_base64Decode (const uint8_t *src, size_t len, size_t *out_len);
+
 // caller must allocate 32 bytes for keyBuf
 // returns 0 for success or a negative error code
 int utils_x25519Base64ToBuf (uint8_t *keyBuf, const char *keyStr);

@@ -12,12 +12,8 @@
 #include <stdint.h>
 #include <string.h>
 #include "uWebSockets/libuwebsockets.h"
-#include "globals.h"
-// TODO: fix up the generated protobufs code so we can turn pedantic back on
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
 #include "protobufs/monitor.pb.h"
-#pragma GCC diagnostic pop
+#include "globals.h"
 #include "config.h"
 #include "monitor.h"
 

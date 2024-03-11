@@ -258,6 +258,9 @@ inline int utils_roundUpPowerOfTwo (unsigned int x) {
   return 1 << (1 + __builtin_clz(1) - __builtin_clz(x-1));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
 // https://stackoverflow.com/a/37109258
 static const int b64Index[256] = {
   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
@@ -293,6 +296,82 @@ int utils_x25519Base64ToBuf (uint8_t *keyBuf, const char *keyStr) {
 
   return 0;
 }
+
+/*
+* Base64 encoding/decoding (RFC1341)
+* Copyright (c) 2005-2011, Jouni Malinen <j@w1.fi>
+*
+* This software may be distributed under the terms of the BSD license.
+* See README for more details.
+*/
+
+static const uint8_t base64_table[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/**
+ * base64_decode - Base64 decode
+ * @src: Data to be decoded
+ * @len: Length of the data to be decoded
+ * @out_len: Pointer to output length variable
+ * Returns: Allocated buffer of out_len bytes of decoded data,
+ * or %NULL on failure
+ *
+ * Caller is responsible for freeing the returned buffer.
+ */
+uint8_t *utils_base64Decode (const uint8_t *src, size_t len, size_t *out_len) {
+  uint8_t dtable[256], *out, *pos, in[4], block[4], tmp;
+  size_t i, count, olen;
+  memset(dtable, 0x80, 256);
+  for (i = 0; i < sizeof(base64_table) - 1; i++) {
+    dtable[base64_table[i]] = (uint8_t) i;
+  }
+
+  dtable[(unsigned char)'='] = 0;
+  count = 0;
+  for (i = 0; i < len; i++) {
+    if (dtable[src[i]] != 0x80)
+      count++;
+  }
+
+  if (count == 0 || count % 4) {
+    return NULL;
+  }
+
+  olen = count / 4 * 3;
+  pos = out = (uint8_t*)malloc(olen);
+  if (out == NULL) {
+    return NULL;
+  }
+
+  count = 0;
+  for (i = 0; i < len; i++) {
+    tmp = dtable[src[i]];
+    if (tmp == 0x80)
+      continue;
+    in[count] = src[i];
+    block[count] = tmp;
+    count++;
+    if (count == 4) {
+      *pos++ = (block[0] << 2) | (block[1] >> 4);
+      *pos++ = (block[1] << 4) | (block[2] >> 2);
+      *pos++ = (block[2] << 6) | block[3];
+      count = 0;
+    }
+  }
+
+  if (pos > out) {
+    if (in[2] == '=') {
+      pos -= 2;
+    } else if (in[3] == '=') {
+      pos--;
+    }
+  }
+
+  *out_len = pos - out;
+  return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 // Poly: 0x8005
 // https://stackoverflow.com/questions/10564491/function-to-calculate-a-crc16-checksum#comment83704063_10569892
