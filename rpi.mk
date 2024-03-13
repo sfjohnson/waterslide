@@ -11,13 +11,11 @@ PROTOC = bin/protoc
 PROTOCFLAGS = --cpp_out=.
 
 CFLAGS = --sysroot=$(TOOLCHAIN)/arm-rpi-linux-gnueabihf/sysroot -D_POSIX_C_SOURCE=200809L -std=c17 -O3 -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
-# DEBUG: put -pedantic back
-# CPPFLAGS = --sysroot=$(TOOLCHAIN)/arm-rpi-linux-gnueabihf/sysroot -std=c++17 -O3 -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
-CPPFLAGS = --sysroot=$(TOOLCHAIN)/arm-rpi-linux-gnueabihf/sysroot -std=c++20 -O3 -fstrict-aliasing -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
+CPPFLAGS = --sysroot=$(TOOLCHAIN)/arm-rpi-linux-gnueabihf/sysroot -std=c++20 -O3 -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
 ORIGIN=$ORIGIN
 O=$$O
 LDFLAGS = -Llib/rpi -pthread
-LIBS = -lstdc++ -ldl -lm -lopus -luwebsockets -lraptorq -lck -lr8brain -lprotobuf-lite -lboringtun -ltinyalsa
+LIBS = -lstdc++ -ldl -latomic -lm -lopus -luwebsockets -lraptorq -lck -lr8brain -lprotobuf-lite -lboringtun -ltinyalsa
 
 TARGET = waterslide-rpi
 PROTOBUFS = init-config.proto monitor.proto

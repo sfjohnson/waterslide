@@ -14,7 +14,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 #include "protobufs/monitor.pb.h"
+#pragma GCC diagnostic pop
 #include "globals.h"
 #include "config.h"
 #include "monitor.h"

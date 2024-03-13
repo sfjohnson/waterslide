@@ -9,7 +9,11 @@
 #include <string.h>
 #include "globals.h"
 #include "utils.h"
+// the Abseil people don't "endorse" -Wpedantic *eyeroll*
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 #include "protobufs/init-config.pb.h"
+#pragma GCC diagnostic pop
 #include "config.h"
 #if defined(__linux__) || defined(__ANDROID__)
 #include "tinyalsa/mixer.h"
@@ -26,7 +30,7 @@ typedef struct {
 } mixerControl_t;
 
 #if defined(__linux__) || defined(__ANDROID__)
-static int applyMixerConfig (unsigned int cardId, const google::protobuf::RepeatedPtrField<InitConfigProto_MixerControl> *controls) {
+static int applyMixerConfig (unsigned int cardId, const google::protobuf::RepeatedPtrField<Audio_MixerControl> *controls) {
   // Save the mixer state on the first call and restore it on the second call
   static unsigned int savedCardId = 0;
   static mixerControl_t *savedControls = NULL;
@@ -160,7 +164,7 @@ static int parseAudio (int mode, const Audio &audio, const Audio_SenderReceiver 
     return -4;
   }
   auto linux = senderReceiver.linux();
-  err = applyMixerConfig(linux.cardid(), &linux.controls());
+  int err = applyMixerConfig(linux.cardid(), &linux.controls());
   if (err < 0) return err - 4;
   globals_set1i(audio, deviceChannelCount, linux.devicechannelcount());
   globals_set1i(audio, cardId, linux.cardid());

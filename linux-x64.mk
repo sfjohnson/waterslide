@@ -11,7 +11,7 @@ PROTOC = bin/protoc
 PROTOCFLAGS = --cpp_out=.
 
 CFLAGS = -D_POSIX_C_SOURCE=200809L -std=c17 -O3 -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
-CPPFLAGS = -std=c++20 -O3 -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
+CPPFLAGS = -std=c++20 -O3 -fstrict-aliasing -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
 ORIGIN=$ORIGIN
 O=$$O
 LDFLAGS = -Llib/linux-x64 -pthread

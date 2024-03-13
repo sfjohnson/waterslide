@@ -3,6 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#include "xwait.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "opus/opus_multistream.h"
@@ -14,7 +15,6 @@
 #include "pcm.h"
 #include "endpoint.h"
 #include "config.h"
-#include "xwait.h"
 #include "receiver.h"
 
 static OpusMSDecoder *decoder = NULL;

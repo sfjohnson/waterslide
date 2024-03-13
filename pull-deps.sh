@@ -57,7 +57,7 @@ download () {
   fi
 }
 
-download all     v25.2.19     protobuf         libprotobuf-lite
+download all     v25.2.24     protobuf         libprotobuf-lite
 download all     v0.7.23      ck               libck
 download linux   v2.1.3       tinyalsa         libtinyalsa
 download macos   v19.7.5      portaudio        libportaudio

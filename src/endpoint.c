@@ -55,7 +55,6 @@ static void sendBufToAll (const uint8_t *buf, int bufLen) {
         globals_add1uiv(statsEndpoints, sendCongestion, i, 1);
       } else {
         // send failed, close this endpoint and re-open after a delay
-        // printf("(5) state %d -> Close\n", ep->state); // DEBUG: log
         ep->state = Close;
       }
     } else {
@@ -187,7 +186,6 @@ static void handleRes (int epIndex, uint8_t *buf, ssize_t len) {
 
       memcpy(&ep->peerAddr, &buf[32], 4);
       memcpy(&ep->peerPort, &buf[36], 2);
-      // printf("(6) state %d -> GotPeerAddr\n", ep->state); // DEBUG: log
       ep->state = GotPeerAddr;
       ep->lastPacketUTime = utils_getCurrentUTime();
       globals_set1uiv(statsEndpoints, open, epIndex, 1);
@@ -249,23 +247,20 @@ static void *openCloseLoop (UNUSED void *arg) {
       endpoint_t *ep = &endpoints[epIndex];
 
       if (ep->state == Open) {
-        if (openEndpoint(epIndex) < 0) {
-          // printf("(7) state %d -> Close\n", ep->state); // DEBUG: log
+        int err = openEndpoint(epIndex);
+        if (err < 0) {
           ep->state = Close;
         } else {
           ep->discoveryTickCounter = ENDPOINT_DISCOVERY_INTERVAL;
-          // printf("(8) state %d -> Discovery\n", ep->state); // DEBUG: log
           ep->state = Discovery;
         }
       } else if (ep->state == Close) {
         globals_set1uiv(statsEndpoints, open, epIndex, 0);
         close(ep->sock);
         ep->reopenTickCounter = utils_randBetween(ENDPOINT_REOPEN_INTERVAL_MIN, ENDPOINT_REOPEN_INTERVAL_MAX);
-        // printf("(9) state %d -> WaitForReopen\n", ep->state); // DEBUG: log
         ep->state = WaitForReopen;
       } else if (ep->state == WaitForReopen) {
         if (--ep->reopenTickCounter == 0) {
-          // printf("(10) state %d -> Open\n", ep->state); // DEBUG: log
           ep->state = Open;
         }
       }
@@ -309,7 +304,6 @@ static void *dataLoop (UNUSED void *arg) {
         utils_getElapsedUTime(endpoints[i].lastPacketUTime) > 5000 * ENDPOINT_KEEP_ALIVE_MS
       ) {
         // wait for at least 5 dropped keepalive packets before closing
-        // printf("(1) state %d -> Close\n", endpoints[i].state); // DEBUG: log
         endpoints[i].state = Close;
       }
 
@@ -345,7 +339,6 @@ static void *dataLoop (UNUSED void *arg) {
 
       if (pfds[i].revents == 0) continue;
       if (pfds[i].revents != POLLIN) {
-        // printf("(2) state %d -> Close\n", ep->state); // DEBUG: log
         ep->state = Close;
         continue;
       }
@@ -356,7 +349,6 @@ static void *dataLoop (UNUSED void *arg) {
       //        otherwise port-restricted cone NAT might not work properly
 
       if (recvLen < 0 || recvAddrLen != sizeof(recvAddr)) {
-        // printf("(3) state %d -> Close\n", ep->state); // DEBUG: log
         ep->state = Close;
         continue;
       }
@@ -407,7 +399,6 @@ int endpoint_init (int (*onPacket)(const uint8_t*, size_t, int)) {
     if (ifLen <= 0) return -4;
 
     memcpy(endpoints[i].ifName, ifName, ifLen + 1);
-    // printf("(4) state %d -> Open\n", endpoints[i].state); // DEBUG: log
     endpoints[i].state = Open;
     endpoints[i].lastPacketUTime = -1;
   }

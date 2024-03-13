@@ -12,7 +12,10 @@
 #include <stdint.h>
 #include <string.h>
 #include "uWebSockets/libuwebsockets.h"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 #include "protobufs/monitor.pb.h"
+#pragma GCC diagnostic pop
 #include "globals.h"
 #include "config.h"
 #include "monitor.h"
