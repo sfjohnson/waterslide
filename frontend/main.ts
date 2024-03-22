@@ -10,20 +10,60 @@ import { promises as fsp } from 'fs'
 import url from 'url'
 import path from 'path'
 import os from 'os'
+import dns from 'dns'
+
+interface ConfigDiscovery {
+  serverAddr: number[] | string
+  serverPort: number
+}
+
+interface ConfigEndpoint {
+  interface: string
+}
+
+interface ConfigMux {
+  maxPacketSize: string
+}
+
+interface ConfigFEC {
+  chId: number
+  symbolLen: number
+  sourceSymbolsPerBlock: number
+  repairSymbolsPerBlock: number
+}
+
+interface ConfigMonitor {
+  uiPort?: number
+  sender?: { wsPort: number }
+  receiver?: { wsPort: number }
+}
+
+interface Config {
+  mode: number
+  privateKey: number
+  peerPublicKey: number
+  discovery: ConfigDiscovery
+  endpoints: ConfigEndpoint[]
+  mux: ConfigMux
+  audio?: any // TODO
+  video?: any // TODO
+  fec: ConfigFEC[]
+  monitor: ConfigMonitor
+}
 
 const app = express()
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
 
+const usageStr = `Usage: ./waterslide OPTION CONFIG
+ -f JSON_FILE      Read config from a JSON file and launch waterslide.
+ -p PROTOBUF       Read config from a Base64 encoded protobuf message
+                   literal that was encoded by init-config.proto and
+                   launch waterslide.
+ -e JSON_FILE      Encode a JSON file using init-config.proto and output
+                   the message as Base64, without launching waterslide.`
+
 if (process.argv.length != 4) {
-  console.log(
-    'Usage: ./waterslide OPTION CONFIG\n',
-    ' -f JSON_FILE      Read config from a JSON file and launch waterslide.\n',
-    ' -p PROTOBUF       Read config from a Base64 encoded protobuf message\n',
-    '                   literal that was encoded by init-config.proto and\n',
-    '                   launch waterslide.\n',
-    ' -e JSON_FILE      Encode a JSON file using init-config.proto and output\n',
-    '                   the message as Base64, without launching waterslide.'
-  )
+  console.log(usageStr)
   process.exit(1)
 }
 
@@ -40,6 +80,20 @@ const startMonitorServer = (port: number) => {
   app.use(express.static(path.join(__dirname, '../monitor')))
   app.listen(port, () => {
     console.log(`Serving monitor on port ${port}`)
+  })
+}
+
+const lookupAddr = (addrStr: string): Promise<number[]> => {
+  return new Promise((resolve, reject) => {
+    dns.lookup(addrStr, {
+      family: 4
+    }, (err, addr) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve(addr.split('.').map((octet) => parseInt(octet)))
+      }
+    })
   })
 }
 
@@ -91,26 +145,27 @@ const startWaterslide = (b64Config: string): void => {
   process.on('SIGTERM', () => { })
 }
 
-let configObj: any
-switch (process.argv[2]) {
-  case '-f':
-    configObj = JSON.parse(await fsp.readFile(process.argv[3], { encoding: 'utf-8' }))
-    if (typeof configObj.monitor.uiPort === 'number') {
-      startMonitorServer(configObj.monitor.uiPort)
-    }
-    startWaterslide(await encodeProtobuf(configObj))
-    break
+let configObj: Config
+const optionArg = process.argv[2]
 
-  case '-p':
-    configObj = await decodeProtobuf(process.argv[3])
-    if (typeof configObj.monitor.uiPort === 'number') {
-      startMonitorServer(configObj.monitor.uiPort)
-    }
-    startWaterslide(process.argv[3])
-    break
+if (optionArg === '-f' || optionArg === '-e') {
+  configObj = JSON.parse(await fsp.readFile(process.argv[3], { encoding: 'utf-8' }))
+} else if (optionArg === '-p') {
+  configObj = await decodeProtobuf(process.argv[3])
+} else {
+  console.log(usageStr)
+  process.exit(1)
+}
 
-  case '-e':
-    configObj = JSON.parse(await fsp.readFile(process.argv[3], { encoding: 'utf-8' }))
-    console.log(await encodeProtobuf(configObj))
-    break
+if (typeof configObj.discovery.serverAddr === 'string') {
+  configObj.discovery.serverAddr = await lookupAddr(configObj.discovery.serverAddr)
+}
+
+if (optionArg === '-f' || optionArg === '-p') {
+  if (typeof configObj.monitor.uiPort === 'number') {
+    startMonitorServer(configObj.monitor.uiPort)
+  }
+  startWaterslide(await encodeProtobuf(configObj))
+} else { // -e
+  console.log(await encodeProtobuf(configObj))
 }

@@ -33,7 +33,7 @@ jobs:
 
       - name: Get RPi toolchain
         run: |
-          wget https://github.com/sfjohnson/rpi-toolchain/releases/download/v0.0.6/arm-rpi-linux-gnueabihf.tar.xz
+          wget https://github.com/sfjohnson/rpi-toolchain/releases/download/v0.0.8/arm-rpi-linux-gnueabihf.tar.xz
           tar xf arm-rpi-linux-gnueabihf.tar.xz -C ~
 
       - name: Setup dependencies

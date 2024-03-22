@@ -29,7 +29,7 @@
 #define SERVER_BIND_PORT 26172
 #define MAX_PEERS 1000
 #define MAX_ENDPOINTS 5
-#define PEER_EXPIRY_TIME 4000000 // microseconds
+#define PEER_EXPIRY_TIME 5000000 // microseconds
 #define RECV_LOOP_IDLE_INTERVAL 1 // second
 
 typedef struct {
@@ -40,6 +40,7 @@ typedef struct {
 
 static peer_t peerList[MAX_PEERS] = { 0 };
 static atomic_int serverSock = -1;
+static int peerExpiryTime = PEER_EXPIRY_TIME;
 
 void utils_usleep (unsigned int us) {
   #if defined(__linux__) || defined(__ANDROID__)
@@ -52,6 +53,7 @@ void utils_usleep (unsigned int us) {
   #endif
 }
 
+// rollover is 1000 seconds (< 2^30 microseconds)
 int utils_getCurrentUTime (void) {
   struct timespec tsp = { 0 };
   // NOTE: CLOCK_MONOTONIC has been observed to jump backwards on macOS https://discussions.apple.com/thread/253778121
@@ -88,7 +90,7 @@ static void sendRes (const struct sockaddr_in *yourAddr, const struct sockaddr_i
 }
 
 static void removePeerIfExpired (peer_t *peer) {
-  if (utils_getElapsedUTime(peer->lastUpdatedUTime) >= PEER_EXPIRY_TIME) {
+  if (utils_getElapsedUTime(peer->lastUpdatedUTime) >= peerExpiryTime) {
     // Zero out everything for a bit more safety.
     memset(peer->myPubKey, 0, 32);
     for (int j = 0; j < MAX_ENDPOINTS; j++) {
@@ -147,7 +149,16 @@ int main (void) {
   static uint8_t recvBuf[1500] = { 0 };
   static struct sockaddr_in recvAddr = { 0 };
 
-  printf("Waterslide discovery server, build 3\n");
+  printf("Waterslide discovery server, build 4\n");
+
+  char *peerExpiryTimeStr = getenv("PEER_EXPIRY_TIME");
+  if (peerExpiryTimeStr != NULL) {
+    char *end;
+    peerExpiryTime = strtol(peerExpiryTimeStr, &end, 10);
+    if (end == peerExpiryTimeStr) peerExpiryTime = PEER_EXPIRY_TIME;
+  }
+
+  printf("PEER_EXPIRY_TIME = %d\n", peerExpiryTime);
 
   serverSock = socket(AF_INET, SOCK_DGRAM, 0);
   if (serverSock < 0) {
