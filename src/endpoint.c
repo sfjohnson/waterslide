@@ -190,8 +190,7 @@ static void handleRes (int epIndex, uint8_t *buf, ssize_t len) {
       ep->lastPacketUTime = utils_getCurrentUTime();
       globals_set1uiv(statsEndpoints, open, epIndex, 1);
 
-      // DEBUG: inet_ntop fails on Android
-      char addrString[15] = { 0 };
+      char addrString[16] = { 0 };
       inet_ntop(AF_INET, &ep->peerAddr, addrString, sizeof(addrString));
       printf("(epIndex %d) got peer addr %s:%d\n", epIndex, addrString, ntohs(ep->peerPort));
       break;

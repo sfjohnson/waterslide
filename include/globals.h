@@ -57,7 +57,7 @@
 #define ENDPOINT_TICK_INTERVAL_US 100000 // in microseconds
 #define ENDPOINT_REOPEN_INTERVAL_MIN 50 // in ticks (1 tick = 100 ms)
 #define ENDPOINT_REOPEN_INTERVAL_MAX 100 // in ticks (1 tick = 100 ms)
-#define ENDPOINT_DISCOVERY_INTERVAL 5 // in ticks
+#define ENDPOINT_DISCOVERY_INTERVAL 10 // in ticks
 
 #define STATS_STREAM_METER_BINS 512
 #define STATS_BLOCK_TIMING_RING_LEN 512
