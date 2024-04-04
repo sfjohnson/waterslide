@@ -122,7 +122,9 @@
     const uScalingFactor = gl.getUniformLocation(program, 'uScalingFactor')
     gl.uniform2fv(uScalingFactor, [dpr, dpr])
 
-    const vertArray = new Float32Array([-0.5, 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, -0.5, -0.5])
+    const vertArray = new Float32Array([
+      -0.5, 1, 0.5, 1, 0.5, -1, -0.5, 1, 0.5, -1, -0.5, -1,
+    ])
     const vertBuf = gl.createBuffer()
     const vertNumComponents = 2
     const vertCount = vertArray.length / vertNumComponents
