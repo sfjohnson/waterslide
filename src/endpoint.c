@@ -145,8 +145,8 @@ static int onPeerPacket (const uint8_t *buf, int bufLen, int epIndex) {
         return 0;
 
       case WRITE_TO_TUNNEL_IPV4:
-        if (result.size > 20 && _onPacket != NULL) {
-          _onPacket(wgReadBuf + 20, result.size - 20, epIndex);
+        if (result.size > 0 && _onPacket != NULL) {
+          _onPacket(wgReadBuf, result.size, epIndex);
         }
         return 0;
 
@@ -208,27 +208,14 @@ static void handleRes (int epIndex, uint8_t *buf, ssize_t len) {
 // public
 /////////////////////
 
-// NOTE: this function is not thread safe due to srcBuf and dstBuf being static.
+// NOTE: this function is not thread safe due to dstBuf being static.
 int endpoint_send (const uint8_t *buf, size_t bufLen) {
   if (!tunnelUp) return -1;
 
-  // This buffer starts with a fake IPv4 header that passes BoringTun's packet checks.
-  // TODO: remove this check from the Rust code
-  static uint8_t srcBuf[1500] = { 0x45, 0x00, 0x00, 0x00 };
-  static const size_t maxSrcDataLen = sizeof(srcBuf) - 20;
   static uint8_t dstBuf[1500] = { 0 };
 
-  if (bufLen > maxSrcDataLen) return -2;
-
-  size_t srcBufLen = bufLen + 20;
-  // Set length field in the fake header as it is checked by BoringTun.
-  srcBuf[2] = srcBufLen >> 8;
-  srcBuf[3] = srcBufLen & 0xff;
-
-  memcpy(srcBuf + 20, buf, bufLen);
-
   struct wireguard_result result;
-  result = wireguard_write(tunnel, srcBuf, srcBufLen, dstBuf, sizeof(dstBuf));
+  result = wireguard_write(tunnel, buf, bufLen, dstBuf, sizeof(dstBuf));
   if (result.op == WRITE_TO_NETWORK && result.size > 0) {
     sendBufToAll(dstBuf, result.size);
   }
