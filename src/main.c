@@ -40,7 +40,7 @@ int main (int argc, char *argv[]) {
   // Disable full buffering when executed outside of a terminal (e.g. NodeJS spawn)
   setbuf(stdout, NULL);
 
-  printf("Waterslide, build 82\n");
+  printf("Waterslide, build 97\n");
 
   if (argc < 2) {
     printf("First argument must be base64 encoded init config.\n");

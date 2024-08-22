@@ -43,8 +43,13 @@ static inline void xwait_wait (xwait_t *handle) {
 #ifdef __APPLE__
   dispatch_semaphore_wait(*handle, DISPATCH_TIME_FOREVER);
 #else
-  // wait iff *handle == 0
-  syscall(SYS_futex, handle, FUTEX_WAIT_PRIVATE, 0, NULL, NULL, 0);
+  // no need for syscall if xwait_notify was called more than once since the last call to xwait_wait
+  while (atomic_load(handle) == 0) {
+    // wait iff *handle == 0
+    syscall(SYS_futex, handle, FUTEX_WAIT_PRIVATE, 0, NULL, NULL, 0);
+    // if *handle == 0 here, there was a spurious wake-up, wait again
+  }
+
   atomic_fetch_sub(handle, 1);
 #endif
 }

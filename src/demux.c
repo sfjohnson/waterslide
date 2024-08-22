@@ -143,19 +143,17 @@ static void *startDecodeThread (void *arg) {
 
   while (atomic_load(&threadsRunning)) {
     xwait_wait(&chan->waitHandle);
+    if (ck_ring_size(&chan->chunkRing) < chan->chunkLenWords) continue;
 
-    // feed chunks from all endpoints to raptorq_decodePacket until the ring is empty
-    while (ck_ring_size(&chan->chunkRing) >= chan->chunkLenWords) {
-      for (size_t i = 0; i < chan->chunkLenWords; i++) {
-        intptr_t chunkWord = 0;
-        ck_ring_dequeue_spsc(&chan->chunkRing, chan->chunkRingBuf, (void*)&chunkWord);
-        memcpy(&chan->chunkBuf[4*i], &chunkWord, 4);
-      }
-
-      int result = raptorq_decodePacket(chan->raptorqHandle, chan->chunkBuf, chan->blockBuf);
-
-      if (result == chan->blockBufLen) decodeBlock(chan->chunkBuf[0], chan);
+    // feed one chunk from any endpoint to raptorq_decodePacket
+    for (size_t i = 0; i < chan->chunkLenWords; i++) {
+      intptr_t chunkWord = 0;
+      ck_ring_dequeue_spsc(&chan->chunkRing, chan->chunkRingBuf, (void*)&chunkWord);
+      memcpy(&chan->chunkBuf[4*i], &chunkWord, 4);
     }
+
+    int result = raptorq_decodePacket(chan->raptorqHandle, chan->chunkBuf, chan->blockBuf);
+    if (result == chan->blockBufLen) decodeBlock(chan->chunkBuf[0], chan);
   }
 
   return NULL;

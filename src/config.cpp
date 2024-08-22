@@ -163,6 +163,9 @@ static int parseAudio (int mode, const Audio &audio, const Audio_SenderReceiver 
     printf("Init config: audio: linux field required.\n");
     return -4;
   }
+  // TODO: protobuf is terrible and all its mess will be gone from this project ASAP
+  // https://github.com/abseil/abseil-cpp/issues/727#issuecomment-651116375 no I will not do things your way, your library sucks anyways
+  #undef linux
   auto linux = senderReceiver.linux();
   int err = applyMixerConfig(linux.cardid(), &linux.controls());
   if (err < 0) return err - 4;

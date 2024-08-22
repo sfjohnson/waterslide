@@ -3,37 +3,36 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-ifeq ($(shell uname -m), arm64)
-  ARCH = macos-arm64
-else
-  ARCH = macos11
-endif
+ERROR_MESSAGE := This Makefile can be run on x86_64 Linux only
 
-# Uses Homebrew clang, tested with version 15
-LLVM_PATH := $(shell brew --prefix llvm@15)
-OPENSSL_PATH := $(shell brew --prefix openssl@3)
-CC = $(LLVM_PATH)/bin/clang
-CPP = $(LLVM_PATH)/bin/clang
+CC = $(TOOLCHAIN)/bin/aarch64-rpi4-linux-gnu-gcc
+CPP = $(TOOLCHAIN)/bin/aarch64-rpi4-linux-gnu-g++
 PROTOC = bin/protoc
 PROTOCFLAGS = --cpp_out=.
-# CFLAGS = -g3 -fno-omit-frame-pointer -fsanitize=address
-# LIBS = -g3 -fno-omit-frame-pointer -fsanitize=address
-CFLAGS = -std=c17 -O3 -flto -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I$(OPENSSL_PATH)/include
-CPPFLAGS = -std=c++20 -O3 -flto -fstrict-aliasing -Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-gcc-compat -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck -I$(OPENSSL_PATH)/include
-LDFLAGS = -Llib/$(ARCH) -L$(OPENSSL_PATH)/lib -pthread -flto
-LIBS = -lstdc++ -lm -lz -lopus -lportaudio -lr8brain -lraptorq -lck -lssl -lcrypto -luwebsockets -lprotobuf-lite -lboringtun -framework CoreAudio -framework AudioUnit -framework AudioToolbox -framework CoreServices -framework Security
 
-TARGET = waterslide-$(ARCH)
+CFLAGS = --sysroot=$(TOOLCHAIN)/aarch64-rpi4-linux-gnu/sysroot -D_POSIX_C_SOURCE=200809L -std=c17 -O3 -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
+CPPFLAGS = --sysroot=$(TOOLCHAIN)/aarch64-rpi4-linux-gnu/sysroot -std=c++20 -O3 -fstrict-aliasing -pedantic -Wall -Wextra -I./include -I./include/deps -I./include/deps/ck
+ORIGIN=$ORIGIN
+O=$$O
+LDFLAGS = -Llib/rpi-arm64 -pthread
+LIBS = -lstdc++ -ldl -latomic -lm -lopus -luwebsockets -lraptorq -lck -lr8brain -lprotobuf-lite -lboringtun -ltinyalsa
+
+TARGET = waterslide-rpi-arm64
 PROTOBUFS = init-config.proto monitor.proto
-SRCSC = main.c sender.c receiver.c globals.c utils.c mux.c demux.c endpoint.c audio-macos.c pcm.c event-recorder.c
+SRCSC = main.c audio-linux.c sender.c receiver.c globals.c utils.c mux.c demux.c endpoint.c pcm.c event-recorder.c
 SRCSCPP = syncer/enqueue.cpp syncer/resamp-state.cpp syncer/receiver-sync.cpp config.cpp monitor.cpp $(subst .proto,.pb.cpp,$(addprefix protobufs/,$(PROTOBUFS)))
 OBJS = $(subst .c,.o,$(addprefix src/,$(SRCSC))) $(subst .cpp,.o,$(addprefix src/,$(SRCSCPP)))
 
-.PHONY: setup
+.PHONY: exit setup
 
-all: setup protobufs bin/$(TARGET)
+all: exit setup protobufs bin/$(TARGET)
 
 protobufs: $(PROTOBUFS)
+
+exit:
+ifneq ($(shell uname), Linux)
+	$(error $(ERROR_MESSAGE))
+endif
 
 setup:
 	mkdir -p obj/protobufs obj/syncer include/protobufs src/protobufs

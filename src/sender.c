@@ -138,7 +138,7 @@ static void *startAudioLoop (UNUSED void *arg) {
 static void *startConfigLoop (UNUSED void *arg) {
   while (threadsRunning) {
     mux_writeData(chIdConfig, receiverConfigBuf, receiverConfigBufLen);
-    sleep(1);
+    utils_usleep(500000);
   }
 
   return NULL;

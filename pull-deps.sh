@@ -8,18 +8,18 @@ set -e
 
 USERNAME=sfjohnson
 
-rm -rf lib/macos-arm64 lib/macos11 lib/android30 lib/rpi lib/linux-x64 include/deps
+rm -rf lib/macos-arm64 lib/macos12 lib/android30 lib/rpi lib/rpi-arm64 lib/linux-x64 include/deps
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
   if [[ $(uname -m) == 'arm64' ]]; then
     ARCH=macos-arm64
   else
-    ARCH=macos11
+    ARCH=macos12
   fi
-  mkdir -p bin lib/$ARCH lib/android30 lib/rpi lib/linux-x64 licenses
+  mkdir -p bin lib/$ARCH lib/android30 lib/rpi lib/rpi-arm64 lib/linux-x64 licenses
 elif [[ "$OSTYPE" == "linux-gnu"* && $(uname -m) == 'x86_64' ]]; then
   ARCH=linux
-  mkdir -p bin lib/android30 lib/rpi lib/linux-x64 licenses
+  mkdir -p bin lib/android30 lib/rpi lib/rpi-arm64 lib/linux-x64 licenses
 else
   echo "This script only runs on x86_64 macOS, arm64 macOS or x86_64 Linux";
   exit 1;
@@ -30,7 +30,7 @@ download () {
 
   if [ $1 != "macos" ]; then
     curl https://github.com/$USERNAME/$3/releases/download/$2/$4-android30.a --output lib/android30/$4.a -s -L
-    curl https://github.com/$USERNAME/$3/releases/download/$2/$4-rpi.a --output lib/rpi/$4.a -s -L
+    curl https://github.com/$USERNAME/$3/releases/download/$2/$4-rpi-arm64.a --output lib/rpi-arm64/$4.a -s -L
     curl https://github.com/$USERNAME/$3/releases/download/$2/$4-linux-x64.a --output lib/linux-x64/$4.a -s -L
   fi
   if [[ $1 != "linux" && $ARCH != "linux" ]]; then
@@ -57,15 +57,15 @@ download () {
   fi
 }
 
-download all     v25.2.24     protobuf         libprotobuf-lite
-download all     v0.7.23      ck               libck
-download linux   v2.1.3       tinyalsa         libtinyalsa
+download all     v25.3.1      protobuf         libprotobuf-lite
+download all     v0.8.2       ck               libck
+download linux   v2.2.2       tinyalsa         libtinyalsa
 download macos   v19.7.5      portaudio        libportaudio
-download all     v6.5.0       r8brain-free-src libr8brain
-download all     v1.4.16      opus             libopus
-download all     v1.9.3       raptorq          libraptorq
-download all     v19.7.33     uWebSockets      libuwebsockets
-download all     v0.7.5       boringtun        libboringtun
+download all     v6.6.1       r8brain-free-src libr8brain
+download all     v1.5.4       opus             libopus
+download all     v2.0.14      raptorq          libraptorq
+download all     v19.8.3      uWebSockets      libuwebsockets
+download all     v0.8.4       boringtun        libboringtun
 
 echo "Fixing protobuf include paths..."
 cp -r include/deps/protobuf/absl include/deps
