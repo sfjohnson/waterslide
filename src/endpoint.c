@@ -101,6 +101,7 @@ static int openEndpoint (int epIndex) {
   endpoint_t *ep = &endpoints[epIndex];
   ep->peerAddr = 0;
   ep->peerPort = 0;
+  ep->lastPacketUTime = -1;
 
   ep->sock = socket(AF_INET, SOCK_DGRAM, 0);
   if (ep->sock < 0) return -1;
@@ -121,8 +122,18 @@ static int openEndpoint (int epIndex) {
   if (err < 0) return -6;
   #endif
 
+  // bind source ports to 26173 for endpoint 0, 26174 for endpoint 1 etc...
+  // these ports may need to be forwarded if you're on a restrictive NAT with no IPv6
+  struct sockaddr_in bindAddr = { 0 };
+  bindAddr.sin_family = AF_INET;
+  bindAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+  bindAddr.sin_port = htons(26173 + epIndex);
+  if (bind(ep->sock, (const struct sockaddr*)&bindAddr, sizeof(bindAddr)) < 0) {
+    return -7;
+  }
+
   // DEBUG: log
-  printf("epIndex %d bound to interface %s\n", epIndex, ep->ifName);
+  printf("epIndex %d bound to interface %s on UDP port %d\n", epIndex, ep->ifName, 26173 + epIndex);
 
   return 0;
 }
@@ -287,9 +298,13 @@ static void *dataLoop (UNUSED void *arg) {
       if (tick &&
         endpoints[i].state == GotPeerAddr &&
         endpoints[i].lastPacketUTime >= 0 &&
-        utils_getElapsedUTime(endpoints[i].lastPacketUTime) > 5000 * ENDPOINT_KEEP_ALIVE_MS
+        utils_getElapsedUTime(endpoints[i].lastPacketUTime) > 15000000
       ) {
-        // wait for at least 5 dropped keepalive packets before closing
+        // wait for 15 seconds before closing
+        // this time is unnecessarily long for an established WireGuard session,
+        // but is just enough time for a few re-transmissions of the wg handshake
+        // which is necessary for port restricted NAT as you have to send a packet
+        // to the peer before you can receive from that peer
         endpoints[i].state = Close;
       }
 
@@ -331,13 +346,16 @@ static void *dataLoop (UNUSED void *arg) {
 
       socklen_t recvAddrLen = sizeof(recvAddr);
       ssize_t recvLen = recvfrom(ep->sock, recvBuf, sizeof(recvBuf), 0, (struct sockaddr*)&recvAddr, &recvAddrLen);
-      // DEBUG: I think we should do here: ep->peerPort = recvAddr.sin_port
-      //        otherwise port-restricted cone NAT might not work properly
 
       if (recvLen < 0 || recvAddrLen != sizeof(recvAddr)) {
         ep->state = Close;
         continue;
       }
+
+      // this line is required if the peer has symmetric NAT, as 
+      // moving from the discovery server to the peer counts as
+      // a new mapping
+      ep->peerPort = recvAddr.sin_port;
 
       ep->lastPacketUTime = utils_getCurrentUTime();
 

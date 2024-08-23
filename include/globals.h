@@ -53,10 +53,10 @@
 #define MUX_CHANNEL_COUNT 3
 
 #define SEC_KEY_LENGTH 44 // Length of base 64 encoded key string in chars, not including null terminator.
-#define ENDPOINT_KEEP_ALIVE_MS 600 // in milliseconds
+#define ENDPOINT_KEEP_ALIVE_MS 2000 // in milliseconds
 #define ENDPOINT_TICK_INTERVAL_US 100000 // in microseconds
-#define ENDPOINT_REOPEN_INTERVAL_MIN 50 // in ticks (1 tick = 100 ms)
-#define ENDPOINT_REOPEN_INTERVAL_MAX 100 // in ticks (1 tick = 100 ms)
+#define ENDPOINT_REOPEN_INTERVAL_MIN 30 // in ticks (1 tick = 100 ms)
+#define ENDPOINT_REOPEN_INTERVAL_MAX 50 // in ticks (1 tick = 100 ms)
 #define ENDPOINT_DISCOVERY_INTERVAL 10 // in ticks
 
 #define STATS_STREAM_METER_BINS 512
