@@ -7,7 +7,7 @@ set -e
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 NODE_VERSION=v20.17.0
-ARCH_OS=$(uname -m)
+ARCH_OS=$([ $(uname -m) = "arm64" ] && echo "arm64" || echo "x64")
 ARCH_WTRSL=$([ $ARCH_OS = "arm64" ] && echo "macos-arm64" || echo "macos12")
 NPM=waterslide-macos-dist/bin/npm
 
@@ -34,6 +34,7 @@ make -f macos.mk clean
 echo "Make monitor"
 cp protobufs/monitor.proto monitor/public
 pushd monitor > /dev/null
+../$NPM ci
 ../$NPM run build
 popd > /dev/null
 

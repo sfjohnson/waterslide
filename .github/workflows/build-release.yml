@@ -91,14 +91,6 @@ jobs:
         run: ./build-linux.sh
         working-directory: ./discovery-server
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.inputs.version }}
-          files: ./discovery-server/waterslide-ds-linux
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Upload build output
         uses: actions/upload-artifact@v4
         with:
