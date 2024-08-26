@@ -6,27 +6,35 @@
 -->
 
 <script>
+  import axios from 'axios'
   import protobuf from 'protobufjs/dist/protobuf.min'
   import AudioSection from './AudioSection.svelte'
   import BlocksSection from './BlocksSection.svelte'
   import EndpointsSection from './EndpointsSection.svelte'
 
-  const wsServerAddr = `ws://${window.location.hostname}:7681`
-
   let currentState = {}
 
-  const wsClient = new WebSocket(wsServerAddr)
-  wsClient.addEventListener('open', async (event) => {
+  const entrypoint = async () => {
     const proto = (await protobuf.load('./monitor.proto')).lookupType('MonitorProto')
 
-    wsClient.send('Hello Server!')
-    wsClient.onmessage = async (event) => {
-      if (!(event.data instanceof Blob)) return
+    let wsPort = '7681'
+    try {
+      wsPort = (await axios('/ws-port')).data
+    } catch { }
 
-      const msgCh1 = proto.decode(new Uint8Array(await event.data.arrayBuffer())).muxChannel[0]
-      currentState = msgCh1
-    }
-  })
+    const wsClient = new WebSocket(`ws://${window.location.hostname}:${wsPort}`)
+    wsClient.addEventListener('open', async (event) => {
+      wsClient.send('Hello Server!')
+      wsClient.onmessage = async (event) => {
+        if (!(event.data instanceof Blob)) return
+
+        const msgCh1 = proto.decode(new Uint8Array(await event.data.arrayBuffer())).muxChannel[0]
+        currentState = msgCh1
+      }
+    })
+  }
+
+  entrypoint()
 </script>
 
 <div id="main">

@@ -1,0 +1,142 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-macos:
+    runs-on: macos-12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup dependencies
+        run: |
+          brew install openssl@3
+          brew install llvm@15
+
+      - name: Make dist
+        run: ./make-macos-dist.sh
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-macos12
+          path: |
+            waterslide-macos-x64-dist.tar.bz2
+            LICENSE
+
+  build-macos-arm64:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup dependencies
+        run: |
+          brew install openssl@3
+          brew install llvm@15
+
+      - name: Make dist
+        run: ./make-macos-dist.sh
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-macos-arm64
+          path: waterslide-macos-arm64-dist.tar.bz2
+
+  build-rpi:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Get RPi toolchain
+        run: |
+          wget https://github.com/sfjohnson/rpi-toolchain/releases/download/v0.1.8/aarch64-rpi4-linux-gnu.tar.xz
+          tar xf aarch64-rpi4-linux-gnu.tar.xz -C ~
+
+      - name: Setup dependencies
+        run: ./pull-deps.sh
+
+      - name: Make RPi
+        run: make -f rpi-arm64.mk
+        env:
+          TOOLCHAIN: /home/runner/aarch64-rpi4-linux-gnu
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-rpi
+          path: bin/waterslide-rpi-arm64
+
+  build-discovery-server:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build
+        run: ./build-linux.sh
+        working-directory: ./discovery-server
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: ./discovery-server/waterslide-ds-linux
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-ds
+          path: ./discovery-server/waterslide-ds-linux
+
+  create-release:
+    runs-on: ubuntu-22.04
+    needs: [build-macos, build-macos-arm64, build-rpi, build-discovery-server]
+    steps:
+      - name: Get build output macos12
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output-macos12
+
+      - name: Get build output macos-arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output-macos-arm64
+
+      - name: Get build output RPi
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output-rpi
+      
+      - name: Get build output Discovery Server
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output-ds
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            waterslide-macos-x64-dist.tar.bz2
+            waterslide-macos-arm64-dist.tar.bz2
+            waterslide-rpi-arm64
+            waterslide-ds-linux
+            LICENSE
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

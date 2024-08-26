@@ -34,8 +34,7 @@ interface ConfigFEC {
 
 interface ConfigMonitor {
   uiPort?: number
-  sender?: { wsPort: number }
-  receiver?: { wsPort: number }
+  wsPort: number
 }
 
 interface Config {
@@ -76,10 +75,15 @@ const encodeProtobuf = async (configObj: any): Promise<string> => {
   return (initConfigProto.encode(configObj).finish() as Buffer).toString('base64')
 }
 
-const startMonitorServer = (port: number) => {
+const startMonitorServer = (serverPort: number, wsPort: number) => {
   app.use(express.static(path.join(__dirname, '../monitor')))
-  app.listen(port, () => {
-    console.log(`Serving monitor on port ${port}`)
+
+  app.get('/ws-port', (_, res) => {
+    res.send(wsPort.toString())
+  })
+
+  app.listen(serverPort, () => {
+    console.log(`Serving monitor on port ${serverPort}`)
   })
 }
 
@@ -112,7 +116,7 @@ const startWaterslide = (b64Config: string): void => {
       break
   
     case 'darwin-x64':
-      binPath += '-macos11'
+      binPath += '-macos12'
       break
   
     case 'android-arm64':
@@ -163,7 +167,7 @@ if (typeof configObj.discovery.serverAddr === 'string') {
 
 if (optionArg === '-f' || optionArg === '-p') {
   if (typeof configObj.monitor.uiPort === 'number') {
-    startMonitorServer(configObj.monitor.uiPort)
+    startMonitorServer(configObj.monitor.uiPort, configObj.monitor.wsPort)
   }
   startWaterslide(await encodeProtobuf(configObj))
 } else { // -e

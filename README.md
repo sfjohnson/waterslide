@@ -19,7 +19,7 @@ Real-time network protocol with forward error correction and multihoming (blendi
 - [x] Resampling to correct for clock drift between sender and receiver
 - [x] Encryption
 - [x] Network discovery
-- [ ] Video or other data besides audio
+- [ ] IPv6
 
 ## Anti-features
 
@@ -30,14 +30,13 @@ Real-time network protocol with forward error correction and multihoming (blendi
 ## Platforms
 
 - macOS x64
-- Android
 - macOS ARM
 - Raspberry Pi
 - Linux x86_64
 
 ## Setup (common)
 
-1. Install Node.js >= 18 and npm >= 9
+1. Install Node.js 20.x.x and npm 10.x.x
 
 2. Run
 ```sh
@@ -48,54 +47,52 @@ cd waterslide
 
 ## Setup (macOS specific)
 
-Supported platforms: macOS >= 11, Intel or Apple silicon
+Supported platforms: macOS >= 12
 
 1. Install Homebrew
 2. Run
 ```sh
 brew install openssl@3
-brew install llvm@16
+brew install llvm@15
 ```
 
-## Setup (Android specific)
+## Build macOS (binary only)
 
-1. Install Android NDK
-2. Set the `ANDROID_NDK_HOME` env var, e.g.
-```sh
-export ANDROID_NDK_HOME=/Users/<username>/Library/Android/sdk/ndk/21.4.7075529
-```
-
-## Build macOS
+Native compile for either Intel or Apple silicon
 
 ```sh
 make -f macos.mk
 ```
 
-## Build Android (binary only)
+## Build Raspberry Pi 64-bit (binary only)
 
-API 30 (Android 11)
+Cross compile, runs only on Linux x86_64
 
 ```sh
-make -f android30.mk
+make -f rpi-arm64.mk
 ```
 
-## Build Android (distributable tar)
+## Build Linux x86_64 (binary only)
+
+Native compile
+
+```sh
+make -f linux-x64.mk
+```
+
+## Build macOS (distributable tar)
 
 1.
 ```sh
-./make-android-dist.sh
+./make-macos-dist.sh
 ```
-2. Copy `waterslide-android-dist.tar.bz2` to the Android device.
-3. Extract it to a folder the user can execute from e.g.
+2. Copy `waterslide-macos-arm64-dist.tar.bz2` or `waterslide-macos-x64-dist.tar.bz2` to the target and extract.
+3. Run frontend script:
 ```sh
-cd /data/local/tmp
-tar xf waterslide-android-dist.tar.bz2
-```
-4. Run frontend script (must be root):
-```sh
-cd waterslide-android-dist
+cd waterslide-macos-<ARCH>-dist
 ./waterslide OPTION CONFIG
 ```
+4. Open `http://localhost:<UI_PORT>` in a browser. `UI_PORT` is in the log: `Serving monitor on port <UI_PORT>`.
 
 ## Frontend
 
@@ -135,20 +132,15 @@ Options:
 
 ## Discovery server
 
-For use over the internet, make sure inbound UDP port 26172 is open. This port can be changed by changing `SERVER_BIND_PORT` in `discovery-server/main.c`.
-
-### Build and run
-```sh
-cd discovery-server
-./build.sh
-./waterslide-discovery-server
-```
+For use over the internet, make sure inbound UDP port 26172 is open. This port can be changed by changing `SERVER_BIND_PORT` in `discovery-server/main.c`. The environment variable `PEER_EXPIRY_TIME` (in microseconds) can be set to change the interval between a peer contacting the server and that peer being removed from the server's discovery list.
 
 ## Example configs
 
 Audio and video config for both sender and receiver are contained only in sender config. Once receiver gets its audio and video config from channel 0, it can then start decoding other channels to receive audio and video data. Initial receiver config is minimal: networking, and FEC layout for channel 0 (config channel).
 
 See `protobufs/init-config.proto` and `include/globals.h` for more information.
+
+TODO: update and document configs
 
 ### Sender (PCM, Mi A3 internal mic to macOS)
 
@@ -261,13 +253,8 @@ See `protobufs/init-config.proto` and `include/globals.h` for more information.
     }
   ],
   "monitor": {
-    "uiPort": 8080,
-    "sender": {
-      "wsPort": 7681
-    },
-    "receiver": {
-      "wsPort": 7682
-    }
+    "uiPort": 8081,
+    "wsPort": 7681
   }
 }
 ```
@@ -382,13 +369,8 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
     }
   ],
   "monitor": {
-    "uiPort": 8080,
-    "sender": {
-      "wsPort": 7681
-    },
-    "receiver": {
-      "wsPort": 7682
-    }
+    "uiPort": 8081,
+    "wsPort": 7681
   }
 }
 ```
@@ -421,7 +403,8 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
     }
   ],
   "monitor": {
-    "uiPort": 8080
+    "uiPort": 8082,
+    "wsPort": 7682
   }
 }
 ```
@@ -430,7 +413,7 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
 
 The C/C++/Rust code runs a WebSocket server that provides live data. An interface called the monitor connects to this server and provides audio meters, timing graphs, and detailed information on the status and health of the stream.
 
-Note: the monitor interface is due for a redesign once video is implemented.
+Note: monitor redesign coming soon!
 
 <img alt="monitor screenshot" src="monitor-screenshot.png" width="600" />
 

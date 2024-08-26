@@ -60,7 +60,7 @@ download () {
 download all     v25.3.1      protobuf         libprotobuf-lite
 download all     v0.8.2       ck               libck
 download linux   v2.2.2       tinyalsa         libtinyalsa
-download macos   v19.7.5      portaudio        libportaudio
+download macos   v19.8.0      portaudio        libportaudio
 download all     v6.6.1       r8brain-free-src libr8brain
 download all     v1.5.4       opus             libopus
 download all     v2.0.14      raptorq          libraptorq

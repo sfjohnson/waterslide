@@ -106,15 +106,10 @@ message FecLayout {
 }
 
 message Monitor {
-  message SenderReceiver {
-    int32 wsPort = 1;
-    int32 udpPort = 3;
-    bytes udpAddr = 4;
-  }
-
   int32 uiPort = 1; // frontend only
-  SenderReceiver sender = 2;
-  SenderReceiver receiver = 3;
+  int32 wsPort = 2;
+  int32 udpPort = 3;
+  bytes udpAddr = 4;
 }
 
 message InitConfigProto {

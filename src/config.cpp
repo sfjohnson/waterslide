@@ -262,22 +262,10 @@ int config_parseBuf (const uint8_t *buf, size_t bufLen) {
     globals_set1iv(fec, repairSymbolsPerBlock, fec.chid(), fec.repairsymbolsperblock());
   }
 
-  int wsPort = 0, udpPort = 0;
   uint32_t udpAddr = 0;
-
-  if (mode == 1) { // mode == sender
-    if (!initConfig.monitor().has_receiver() || !initConfig.monitor().has_sender()) {
-      printf("Init config: monitor: sender and receiver fields required.\n");
-      return -22;
-    }
-    wsPort = initConfig.monitor().sender().wsport();
-    udpPort = initConfig.monitor().sender().udpport();
-    err = parseAddr(initConfig.monitor().sender().udpaddr(), &udpAddr);
-  } else if (initConfig.monitor().has_receiver()) { // mode == receiver
-    wsPort = initConfig.monitor().receiver().wsport();
-    udpPort = initConfig.monitor().receiver().udpport();
-    err = parseAddr(initConfig.monitor().receiver().udpaddr(), &udpAddr);
-  }
+  int wsPort = initConfig.monitor().wsport();
+  int udpPort = initConfig.monitor().udpport();
+  err = parseAddr(initConfig.monitor().udpaddr(), &udpAddr);
 
   if (udpPort > 0) { // monitor UDP mode
     if (err < 0) return err - 22; // failed to parse udpAddr
@@ -305,7 +293,7 @@ int config_encodeReceiverConfig (uint8_t **destBuf) {
   initConfig.clear_mux();
   initConfig.mutable_audio()->clear_sender();
   // TODO: video
-  initConfig.mutable_monitor()->clear_sender();
+  initConfig.clear_monitor();
 
   // erase FEC channel 0 (config channel)
   for (auto it = initConfig.fec().begin(); it != initConfig.fec().end(); it++) {

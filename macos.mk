@@ -6,7 +6,7 @@
 ifeq ($(shell uname -m), arm64)
   ARCH = macos-arm64
 else
-  ARCH = macos11
+  ARCH = macos12
 endif
 
 # Uses Homebrew clang, tested with version 15
