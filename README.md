@@ -169,7 +169,6 @@ TODO: update and document configs
     },
     "sender": {
       "deviceSampleRate": 48000,
-      "decodeRingLength": 8192,
       "linux": {
         "cardId": 0,
         "deviceId": 0,
@@ -288,7 +287,6 @@ Note: adjusting volume requires additional ALSA mixer control(s) which are diffe
     },
     "sender": {
       "deviceSampleRate": 48000,
-      "decodeRingLength": 2048,
       "macos": {
         "deviceName": "waterslide"
       },

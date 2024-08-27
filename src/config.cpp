@@ -200,6 +200,7 @@ int config_parseBuf (const uint8_t *buf, size_t bufLen) {
   // Transfer protobuf to global store
   // unset is the same as 0, so when a proto is parsed from the config channel, mode will be set to receiver
   int mode = initConfig.mode();
+  if (mode > 1) return -2;
   globals_set1i(root, mode, mode);
 
   int err;
@@ -207,14 +208,14 @@ int config_parseBuf (const uint8_t *buf, size_t bufLen) {
   if (initConfig.has_discovery()) {
     globals_set1i(discovery, serverPort, initConfig.discovery().serverport());
     err = parseAddr(initConfig.discovery().serveraddr(), &serverAddr);
-    if (err < 0) return err - 1;
+    if (err < 0) return err - 2;
     globals_set1ui(discovery, serverAddr, serverAddr);
   }
 
   int endpointCount = initConfig.endpoints_size();
   if (endpointCount > MAX_ENDPOINTS) {
     printf("Init config: Too many endpoints! Max is %d.\n", MAX_ENDPOINTS);
-    return -4;
+    return -5;
   }
   if (endpointCount > 0) {
     for (int i = 0; i < endpointCount; i++) {
@@ -242,10 +243,10 @@ int config_parseBuf (const uint8_t *buf, size_t bufLen) {
       err = parseAudio(mode, initConfig.audio(), initConfig.audio().sender());
     } else {
       printf("Init config: audio: sender or receiver field required.\n");
-      return -5;
+      return -6;
     }
 
-    if (err < 0) return err - 5;
+    if (err < 0) return err - 6;
   }
 
   // TODO: parse video config
@@ -253,7 +254,7 @@ int config_parseBuf (const uint8_t *buf, size_t bufLen) {
   int fecCount = initConfig.fec_size();
   if (fecCount == 0) {
     printf("Init config: fec field required\n");
-    return -21;
+    return -22;
   }
   for (int i = 0; i < fecCount; i++) {
     auto fec = initConfig.fec(i);
@@ -262,19 +263,22 @@ int config_parseBuf (const uint8_t *buf, size_t bufLen) {
     globals_set1iv(fec, repairSymbolsPerBlock, fec.chid(), fec.repairsymbolsperblock());
   }
 
-  uint32_t udpAddr = 0;
-  int wsPort = initConfig.monitor().wsport();
-  int udpPort = initConfig.monitor().udpport();
-  err = parseAddr(initConfig.monitor().udpaddr(), &udpAddr);
+  // monitor field is only for initial config
+  if (initConfig.has_monitor()) {
+    uint32_t udpAddr = 0;
+    int wsPort = initConfig.monitor().wsport();
+    int udpPort = initConfig.monitor().udpport();
+    err = parseAddr(initConfig.monitor().udpaddr(), &udpAddr);
 
-  if (udpPort > 0) { // monitor UDP mode
-    if (err < 0) return err - 22; // failed to parse udpAddr
-    globals_set1ui(monitor, udpAddr, udpAddr);
-    globals_set1i(monitor, udpPort, udpPort);
+    if (udpPort > 0) { // monitor UDP mode
+      if (err < 0) return err - 22; // failed to parse udpAddr
+      globals_set1ui(monitor, udpAddr, udpAddr);
+      globals_set1i(monitor, udpPort, udpPort);
+    }
+
+    globals_set1i(monitor, wsPort, wsPort);
+    // we don't need to parse uiPort; it's just for the Frontend code
   }
-
-  globals_set1i(monitor, wsPort, wsPort);
-  // we don't need to parse uiPort; it's just for the Frontend code
 
   return 0;
 }

@@ -122,18 +122,21 @@ static int openEndpoint (int epIndex) {
   if (err < 0) return -6;
   #endif
 
-  // bind source ports to 26173 for endpoint 0, 26174 for endpoint 1 etc...
+  // bind source ports to 26173 receiver ep 0, 26174 sender ep0, 26175 receiver ep 1,
+  // 26176 sender ep 1, etc ...
+  // sender and receiver can run as two separate processes without port conflict
   // these ports may need to be forwarded if you're on a restrictive NAT with no IPv6
+  int bindPort = 26173 + 2*epIndex + globals_get1i(root, mode);
   struct sockaddr_in bindAddr = { 0 };
   bindAddr.sin_family = AF_INET;
   bindAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-  bindAddr.sin_port = htons(26173 + epIndex);
+  bindAddr.sin_port = htons(bindPort);
   if (bind(ep->sock, (const struct sockaddr*)&bindAddr, sizeof(bindAddr)) < 0) {
     return -7;
   }
 
   // DEBUG: log
-  printf("epIndex %d bound to interface %s on UDP port %d\n", epIndex, ep->ifName, 26173 + epIndex);
+  printf("epIndex %d bound to interface %s on UDP port %d\n", epIndex, ep->ifName, bindPort);
 
   return 0;
 }

@@ -46,7 +46,7 @@ message Audio {
 
   message SenderReceiver {
     int32 deviceSampleRate = 1;
-    int32 decodeRingLength = 2; // In samples. Must be larger than frameSize (Opus or PCM). Affects receive latency.
+    int32 decodeRingLength = 2; // In samples, receiver only. Must be larger than frameSize (Opus or PCM). Affects receive latency.
 
     oneof osConfig {
       MacOS macos = 3;
